@@ -3,6 +3,7 @@
 /// The timestamp extension type represents an instantaneous point on the
 /// time-line. It supports nanosecond precision from 1970-01-01 00:00:00 UTC.
 import gleam/bit_array
+import gleam/int
 import msgpack_gleam/value.{type Value, Extension}
 
 /// The MessagePack extension type code for timestamps
@@ -69,13 +70,13 @@ pub fn decode(value: Value) -> Result(Timestamp, String) {
         12, <<nanoseconds:32, seconds:64-signed>> ->
           Ok(Timestamp(seconds, nanoseconds))
 
-        _, _ -> Error("Invalid timestamp data length: " <> int_to_string(size))
+        _, _ -> Error("Invalid timestamp data length: " <> int.to_string(size))
       }
     }
     Extension(type_code, _) ->
       Error(
         "Expected timestamp extension type (-1), got: "
-        <> int_to_string(type_code),
+        <> int.to_string(type_code),
       )
     _ -> Error("Expected Extension value, got different type")
   }
@@ -109,35 +110,4 @@ pub fn to_unix_seconds(timestamp: Timestamp) -> Int {
 /// Convert a timestamp to Unix milliseconds
 pub fn to_unix_millis(timestamp: Timestamp) -> Int {
   timestamp.seconds * 1000 + timestamp.nanoseconds / 1_000_000
-}
-
-// Helper to convert int to string (avoiding dependency on gleam/int)
-fn int_to_string(n: Int) -> String {
-  case n {
-    0 -> "0"
-    _ if n < 0 -> "-" <> int_to_string_positive(-n)
-    _ -> int_to_string_positive(n)
-  }
-}
-
-fn int_to_string_positive(n: Int) -> String {
-  case n {
-    0 -> ""
-    _ -> {
-      let digit = case n % 10 {
-        0 -> "0"
-        1 -> "1"
-        2 -> "2"
-        3 -> "3"
-        4 -> "4"
-        5 -> "5"
-        6 -> "6"
-        7 -> "7"
-        8 -> "8"
-        9 -> "9"
-        _ -> "?"
-      }
-      int_to_string_positive(n / 10) <> digit
-    }
-  }
 }

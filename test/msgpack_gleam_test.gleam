@@ -224,6 +224,52 @@ pub fn decode_uint64_test() {
   |> should.equal(Ok(#(Integer(4_294_967_296), <<>>)))
 }
 
+pub fn encode_uint64_large_test() {
+  // Test value in upper half of uint64 range (above max signed int64)
+  // 2^63 = 9_223_372_036_854_775_808
+  let large_value = 9_223_372_036_854_775_808
+  pack(Integer(large_value))
+  |> should.equal(Ok(<<0xcf, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>))
+}
+
+pub fn decode_uint64_large_test() {
+  // Decode 2^63
+  unpack(<<0xcf, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>)
+  |> should.equal(Ok(#(Integer(9_223_372_036_854_775_808), <<>>)))
+}
+
+pub fn encode_uint64_max_test() {
+  // Test maximum uint64 value: 2^64 - 1 = 18_446_744_073_709_551_615
+  let max_uint64 = 18_446_744_073_709_551_615
+  pack(Integer(max_uint64))
+  |> should.equal(Ok(<<0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff>>))
+}
+
+pub fn decode_uint64_max_test() {
+  // Decode max uint64
+  unpack(<<0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff>>)
+  |> should.equal(Ok(#(Integer(18_446_744_073_709_551_615), <<>>)))
+}
+
+pub fn roundtrip_uint64_large_test() {
+  // Round-trip test for values above max signed int64
+  let test_values = [
+    9_223_372_036_854_775_808,
+    // 2^63
+    10_000_000_000_000_000_000,
+    // 10 quintillion
+    18_446_744_073_709_551_615,
+    // max uint64
+  ]
+
+  list.each(test_values, fn(n) {
+    let value = Integer(n)
+    let assert Ok(encoded) = pack(value)
+    let assert Ok(decoded) = unpack_exact(encoded)
+    decoded |> should.equal(value)
+  })
+}
+
 // ============================================================================
 // Float Encoding/Decoding Tests
 // ============================================================================
