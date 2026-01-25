@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Check formatting
+        run: just format-check
+
+      - name: Build
+        run: just build
+
+      - name: Run tests
+        run: just test
