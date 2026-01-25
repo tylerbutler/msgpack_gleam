@@ -21,13 +21,16 @@ test:
 format:
     gleam format src test
 
+format-check:
+    gleam format --check src test
+
 lint:
     gleam check
 
 clean:
     rm -rf build
 
-ci: format lint test build
+ci: format-check lint test build
 
 alias pr := ci
 
