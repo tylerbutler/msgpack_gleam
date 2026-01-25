@@ -124,9 +124,10 @@ case unpack_exact(data) {
 ## Development
 
 ```sh
-gleam build       # Build the project
-gleam test        # Run the tests
-gleam docs build  # Generate documentation
+just build   # Build the project
+just test    # Run the tests
+just docs    # Generate documentation
+just         # List all available commands
 ```
 
 ## License
