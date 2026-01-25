@@ -41,3 +41,6 @@ deps:
 
 check:
     gleam check
+
+docs:
+    gleam docs build
