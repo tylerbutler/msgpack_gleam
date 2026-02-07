@@ -34,6 +34,9 @@ ci: format-check lint test build
 
 alias pr := ci
 
+# Extended checks for main branch
+main: ci docs
+
 # === OPTIONAL RECIPES ===
 
 deps:
