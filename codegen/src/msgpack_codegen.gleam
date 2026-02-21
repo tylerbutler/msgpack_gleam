@@ -6,6 +6,7 @@
 /// Types marked with `/// @derive(msgpack)` will have codecs generated.
 import argv
 import gleam/io
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import msgpack_codegen/generator
@@ -16,7 +17,9 @@ pub fn main() {
     [input_path] -> run(input_path, None)
     [input_path, output_path] -> run(input_path, Some(output_path))
     _ -> {
-      io.println("msgpack_codegen - Generate MessagePack codecs from Gleam types")
+      io.println(
+        "msgpack_codegen - Generate MessagePack codecs from Gleam types",
+      )
       io.println("")
       io.println("Usage:")
       io.println("  gleam run -m msgpack_codegen -- <input_file> [output_file]")
@@ -30,7 +33,9 @@ pub fn main() {
       io.println("")
       io.println("Examples:")
       io.println("  gleam run -m msgpack_codegen -- src/types.gleam")
-      io.println("  gleam run -m msgpack_codegen -- src/types.gleam src/types_codec.gleam")
+      io.println(
+        "  gleam run -m msgpack_codegen -- src/types.gleam src/types_codec.gleam",
+      )
     }
   }
 }
@@ -82,5 +87,3 @@ fn run(input_path: String, output_path: Option(String)) {
     }
   }
 }
-
-import gleam/option.{type Option, None, Some}

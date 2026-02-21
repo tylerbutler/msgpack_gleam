@@ -1,6 +1,7 @@
 import gleam/dict
 import gleam/int
 import gleam/option.{None, Some}
+import gleam/result
 import gleam/string
 import gleeunit/should
 import msgpack_gleam
@@ -469,82 +470,30 @@ fn tree_codec() -> Codec(TreeNode) {
     fn(v) {
       case v {
         value.Map(pairs) -> {
-          // Find the type field
-          case find_string_field(pairs, "type") {
-            Ok("leaf") -> {
-              case find_int_field(pairs, "value") {
-                Ok(val) -> Ok(Leaf(val))
-                Error(e) -> Error(e)
-              }
+          use tag <- result.try(find_string_field(pairs, "type"))
+          case tag {
+            "leaf" -> result.map(find_int_field(pairs, "value"), Leaf)
+            "branch" -> {
+              let decoder = codec.lazy(tree_codec)
+              use left_val <- result.try(find_value_field(pairs, "left"))
+              use right_val <- result.try(find_value_field(pairs, "right"))
+              use left <- result.try(
+                codec.decode(decoder, left_val)
+                |> result.map_error(codec.FieldError("left", _)),
+              )
+              use right <- result.try(
+                codec.decode(decoder, right_val)
+                |> result.map_error(codec.FieldError("right", _)),
+              )
+              Ok(Branch(left, right))
             }
-            Ok("branch") -> {
-              case
-                find_value_field(pairs, "left"),
-                find_value_field(pairs, "right")
-              {
-                Ok(left_val), Ok(right_val) -> {
-                  let decoder = codec.lazy(tree_codec)
-                  case
-                    codec.decode(decoder, left_val),
-                    codec.decode(decoder, right_val)
-                  {
-                    Ok(left), Ok(right) -> Ok(Branch(left, right))
-                    Error(e), _ -> Error(codec.FieldError("left", e))
-                    _, Error(e) -> Error(codec.FieldError("right", e))
-                  }
-                }
-                Error(e), _ -> Error(e)
-                _, Error(e) -> Error(e)
-              }
-            }
-            Ok(other) -> Error(codec.CustomError("Unknown type: " <> other))
-            Error(e) -> Error(e)
+            other -> Error(codec.CustomError("Unknown type: " <> other))
           }
         }
-        other -> Error(codec.TypeMismatch("Map", value_type_name(other)))
+        other -> Error(codec.TypeMismatch("Map", codec.value_type_name(other)))
       }
     },
   )
-}
-
-fn find_string_field(
-  pairs: List(#(value.Value, value.Value)),
-  name: String,
-) -> Result(String, codec.DecodeError) {
-  case pairs {
-    [] -> Error(codec.MissingField(name))
-    [#(value.String(k), value.String(v)), ..rest] ->
-      case k == name {
-        True -> Ok(v)
-        False -> find_string_field(rest, name)
-      }
-    [#(value.String(k), other), ..rest] ->
-      case k == name {
-        True -> Error(codec.TypeMismatch("String", value_type_name(other)))
-        False -> find_string_field(rest, name)
-      }
-    [_, ..rest] -> find_string_field(rest, name)
-  }
-}
-
-fn find_int_field(
-  pairs: List(#(value.Value, value.Value)),
-  name: String,
-) -> Result(Int, codec.DecodeError) {
-  case pairs {
-    [] -> Error(codec.MissingField(name))
-    [#(value.String(k), value.Integer(v)), ..rest] ->
-      case k == name {
-        True -> Ok(v)
-        False -> find_int_field(rest, name)
-      }
-    [#(value.String(k), other), ..rest] ->
-      case k == name {
-        True -> Error(codec.TypeMismatch("Integer", value_type_name(other)))
-        False -> find_int_field(rest, name)
-      }
-    [_, ..rest] -> find_int_field(rest, name)
-  }
 }
 
 fn find_value_field(
@@ -562,17 +511,25 @@ fn find_value_field(
   }
 }
 
-fn value_type_name(v: value.Value) -> String {
-  case v {
-    value.Nil -> "Nil"
-    value.Boolean(_) -> "Boolean"
-    value.Integer(_) -> "Integer"
-    value.Float(_) -> "Float"
-    value.String(_) -> "String"
-    value.Binary(_) -> "Binary"
-    value.Array(_) -> "Array"
-    value.Map(_) -> "Map"
-    value.Extension(_, _) -> "Extension"
+fn find_string_field(
+  pairs: List(#(value.Value, value.Value)),
+  name: String,
+) -> Result(String, codec.DecodeError) {
+  use val <- result.try(find_value_field(pairs, name))
+  case val {
+    value.String(s) -> Ok(s)
+    other -> Error(codec.TypeMismatch("String", codec.value_type_name(other)))
+  }
+}
+
+fn find_int_field(
+  pairs: List(#(value.Value, value.Value)),
+  name: String,
+) -> Result(Int, codec.DecodeError) {
+  use val <- result.try(find_value_field(pairs, name))
+  case val {
+    value.Integer(i) -> Ok(i)
+    other -> Error(codec.TypeMismatch("Integer", codec.value_type_name(other)))
   }
 }
 

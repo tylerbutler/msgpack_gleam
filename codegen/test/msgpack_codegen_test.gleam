@@ -1,3 +1,4 @@
+import gleam/string
 import gleeunit
 import gleeunit/should
 import msgpack_codegen/generator
@@ -135,13 +136,13 @@ pub fn generate_record_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check that generated code contains expected elements
-  should.be_true(contains(generated, "fn user_codec()"))
-  should.be_true(contains(generated, "Codec(User)"))
-  should.be_true(contains(generated, "codec.object3"))
-  should.be_true(contains(generated, "codec.field(\"id\""))
-  should.be_true(contains(generated, "codec.field(\"name\""))
-  should.be_true(contains(generated, "codec.field(\"email\""))
-  should.be_true(contains(generated, "codec.nullable(codec.string())"))
+  should.be_true(string.contains(generated, "fn user_codec()"))
+  should.be_true(string.contains(generated, "Codec(User)"))
+  should.be_true(string.contains(generated, "codec.object3"))
+  should.be_true(string.contains(generated, "codec.field(\"id\""))
+  should.be_true(string.contains(generated, "codec.field(\"name\""))
+  should.be_true(string.contains(generated, "codec.field(\"email\""))
+  should.be_true(string.contains(generated, "codec.nullable(codec.string())"))
 }
 
 pub fn generate_variant_codec_test() {
@@ -150,11 +151,11 @@ pub fn generate_variant_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check that generated code contains expected elements
-  should.be_true(contains(generated, "fn status_codec()"))
-  should.be_true(contains(generated, "codec.custom"))
-  should.be_true(contains(generated, "\"active\""))
-  should.be_true(contains(generated, "\"inactive\""))
-  should.be_true(contains(generated, "\"pending\""))
+  should.be_true(string.contains(generated, "fn status_codec()"))
+  should.be_true(string.contains(generated, "codec.custom"))
+  should.be_true(string.contains(generated, "\"active\""))
+  should.be_true(string.contains(generated, "\"inactive\""))
+  should.be_true(string.contains(generated, "\"pending\""))
 }
 
 pub fn generate_nested_types_codec_test() {
@@ -163,31 +164,6 @@ pub fn generate_nested_types_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check for list and dict codec usage
-  should.be_true(contains(generated, "codec.list(codec.string())"))
-  should.be_true(contains(generated, "codec.string_dict(codec.string())"))
+  should.be_true(string.contains(generated, "codec.list(codec.string())"))
+  should.be_true(string.contains(generated, "codec.string_dict(codec.string())"))
 }
-
-fn contains(haystack: String, needle: String) -> Bool {
-  case haystack {
-    "" -> needle == ""
-    _ -> {
-      case string_starts_with(haystack, needle) {
-        True -> True
-        False -> contains(string_drop_first(haystack), needle)
-      }
-    }
-  }
-}
-
-@external(erlang, "string", "prefix")
-fn string_prefix(s: String, prefix: String) -> a
-
-fn string_starts_with(s: String, prefix: String) -> Bool {
-  case string_prefix(s, prefix) {
-    _ if s == "" -> prefix == ""
-    result -> result != s
-  }
-}
-
-@external(erlang, "string", "slice")
-fn string_drop_first(s: String) -> String

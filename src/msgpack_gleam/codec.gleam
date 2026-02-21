@@ -179,11 +179,7 @@ pub fn nullable(inner: Codec(a)) -> Codec(Option(a)) {
     decoder: fn(v) {
       case v {
         value.Nil -> Ok(None)
-        other ->
-          case inner.decoder(other) {
-            Ok(a) -> Ok(Some(a))
-            Error(e) -> Error(e)
-          }
+        other -> result.map(inner.decoder(other), Some)
       }
     },
   )
@@ -930,15 +926,11 @@ pub fn non_empty_list(item: Codec(a)) -> Codec(List(a)) {
 
 fn decode_field(v: Value, field_def: Field(record, a)) -> Result(a, DecodeError) {
   case v {
-    value.Map(pairs) ->
-      case find_field_in_pairs(pairs, field_def.name) {
-        Ok(field_value) ->
-          case field_def.codec.decoder(field_value) {
-            Ok(a) -> Ok(a)
-            Error(e) -> Error(FieldError(field_def.name, e))
-          }
-        Error(_) -> Error(MissingField(field_def.name))
-      }
+    value.Map(pairs) -> {
+      use field_value <- result.try(find_field_in_pairs(pairs, field_def.name))
+      field_def.codec.decoder(field_value)
+      |> result.map_error(FieldError(field_def.name, _))
+    }
     other -> Error(TypeMismatch("Map", value_type_name(other)))
   }
 }
@@ -962,13 +954,11 @@ fn map_index_error(
   res: Result(a, DecodeError),
   index: Int,
 ) -> Result(a, DecodeError) {
-  case res {
-    Ok(a) -> Ok(a)
-    Error(e) -> Error(IndexError(index, e))
-  }
+  result.map_error(res, IndexError(index, _))
 }
 
-fn value_type_name(v: Value) -> String {
+/// Get the type name of a MessagePack Value for error messages.
+pub fn value_type_name(v: Value) -> String {
   case v {
     value.Nil -> "Nil"
     value.Boolean(_) -> "Boolean"
