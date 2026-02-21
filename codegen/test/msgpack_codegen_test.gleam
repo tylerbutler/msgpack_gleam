@@ -1,9 +1,9 @@
-import gleeunit
-import gleeunit/should
 import msgpack_codegen/generator
+import startest
+import startest/expect
 
 pub fn main() {
-  gleeunit.main()
+  startest.run(startest.default_config())
 }
 
 const simple_record_source = "
@@ -43,42 +43,42 @@ pub fn parse_simple_record_test() {
   let assert Ok(result) = generator.parse_source(simple_record_source)
 
   result.types_to_generate
-  |> should.not_equal([])
+  |> expect.to_not_equal([])
 
   case result.types_to_generate {
     [generator.RecordType(name, params, fields, is_public)] -> {
       name
-      |> should.equal("User")
+      |> expect.to_equal("User")
 
       params
-      |> should.equal([])
+      |> expect.to_equal([])
 
       is_public
-      |> should.be_true()
+      |> expect.to_be_true()
 
       case fields {
         [f1, f2, f3] -> {
           f1.name
-          |> should.equal("id")
+          |> expect.to_equal("id")
           f1.gleam_type
-          |> should.equal("Int")
+          |> expect.to_equal("Int")
           f1.is_optional
-          |> should.be_false()
+          |> expect.to_be_false()
 
           f2.name
-          |> should.equal("name")
+          |> expect.to_equal("name")
           f2.gleam_type
-          |> should.equal("String")
+          |> expect.to_equal("String")
 
           f3.name
-          |> should.equal("email")
+          |> expect.to_equal("email")
           f3.is_optional
-          |> should.be_true()
+          |> expect.to_be_true()
         }
-        _ -> should.fail()
+        _ -> panic as "unreachable"
       }
     }
-    _ -> should.fail()
+    _ -> panic as "unreachable"
   }
 }
 
@@ -86,39 +86,39 @@ pub fn parse_variant_type_test() {
   let assert Ok(result) = generator.parse_source(variant_source)
 
   result.types_to_generate
-  |> should.not_equal([])
+  |> expect.to_not_equal([])
 
   case result.types_to_generate {
     [generator.VariantType(name, _, variants, _)] -> {
       name
-      |> should.equal("Status")
+      |> expect.to_equal("Status")
 
       case variants {
         [v1, v2, v3] -> {
           v1.name
-          |> should.equal("Active")
+          |> expect.to_equal("Active")
           v1.fields
-          |> should.equal([])
+          |> expect.to_equal([])
 
           v2.name
-          |> should.equal("Inactive")
+          |> expect.to_equal("Inactive")
 
           v3.name
-          |> should.equal("Pending")
+          |> expect.to_equal("Pending")
           case v3.fields {
             [f] -> {
               f.name
-              |> should.equal("reason")
+              |> expect.to_equal("reason")
               f.gleam_type
-              |> should.equal("String")
+              |> expect.to_equal("String")
             }
-            _ -> should.fail()
+            _ -> panic as "unreachable"
           }
         }
-        _ -> should.fail()
+        _ -> panic as "unreachable"
       }
     }
-    _ -> should.fail()
+    _ -> panic as "unreachable"
   }
 }
 
@@ -126,7 +126,7 @@ pub fn skip_unmarked_types_test() {
   let assert Ok(result) = generator.parse_source(no_derive_source)
 
   result.types_to_generate
-  |> should.equal([])
+  |> expect.to_equal([])
 }
 
 pub fn generate_record_codec_test() {
@@ -135,13 +135,13 @@ pub fn generate_record_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check that generated code contains expected elements
-  should.be_true(contains(generated, "fn user_codec()"))
-  should.be_true(contains(generated, "Codec(User)"))
-  should.be_true(contains(generated, "codec.object3"))
-  should.be_true(contains(generated, "codec.field(\"id\""))
-  should.be_true(contains(generated, "codec.field(\"name\""))
-  should.be_true(contains(generated, "codec.field(\"email\""))
-  should.be_true(contains(generated, "codec.nullable(codec.string())"))
+  expect.to_be_true(contains(generated, "fn user_codec()"))
+  expect.to_be_true(contains(generated, "Codec(User)"))
+  expect.to_be_true(contains(generated, "codec.object3"))
+  expect.to_be_true(contains(generated, "codec.field(\"id\""))
+  expect.to_be_true(contains(generated, "codec.field(\"name\""))
+  expect.to_be_true(contains(generated, "codec.field(\"email\""))
+  expect.to_be_true(contains(generated, "codec.nullable(codec.string())"))
 }
 
 pub fn generate_variant_codec_test() {
@@ -150,11 +150,11 @@ pub fn generate_variant_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check that generated code contains expected elements
-  should.be_true(contains(generated, "fn status_codec()"))
-  should.be_true(contains(generated, "codec.custom"))
-  should.be_true(contains(generated, "\"active\""))
-  should.be_true(contains(generated, "\"inactive\""))
-  should.be_true(contains(generated, "\"pending\""))
+  expect.to_be_true(contains(generated, "fn status_codec()"))
+  expect.to_be_true(contains(generated, "codec.custom"))
+  expect.to_be_true(contains(generated, "\"active\""))
+  expect.to_be_true(contains(generated, "\"inactive\""))
+  expect.to_be_true(contains(generated, "\"pending\""))
 }
 
 pub fn generate_nested_types_codec_test() {
@@ -163,8 +163,8 @@ pub fn generate_nested_types_codec_test() {
     generator.generate_codecs(result, generator.default_config())
 
   // Check for list and dict codec usage
-  should.be_true(contains(generated, "codec.list(codec.string())"))
-  should.be_true(contains(generated, "codec.string_dict(codec.string())"))
+  expect.to_be_true(contains(generated, "codec.list(codec.string())"))
+  expect.to_be_true(contains(generated, "codec.string_dict(codec.string())"))
 }
 
 fn contains(haystack: String, needle: String) -> Bool {
