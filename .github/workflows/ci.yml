@@ -2,18 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
   workflow_call:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     name: Test
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
 
       - name: Setup environment
         uses: ./.github/actions/setup
@@ -21,8 +20,23 @@ jobs:
       - name: Check formatting
         run: just format-check
 
-      - name: Build
-        run: just build
+      - name: Type check
+        run: just check
+
+      - name: Build (warnings as errors)
+        run: just build-strict
 
       - name: Run tests
         run: just test
+
+  docs:
+    runs-on: ubuntu-latest
+    name: Docs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Build documentation
+        run: just docs
