@@ -700,6 +700,186 @@ fn create_string(n: Int) -> String {
 }
 
 // ============================================================================
+// Format Boundary Tests
+// Verify the encoder picks the correct (smallest) format at each threshold
+// ============================================================================
+
+pub fn boundary_fixstr_to_str8_test() {
+  // 31 bytes = max fixstr (0xa0-0xbf)
+  let s31 = create_string(31)
+  let assert Ok(encoded31) = pack(String(s31))
+  let assert <<header31:8, _:bits>> = encoded31
+  { header31 >= 0xa0 && header31 <= 0xbf } |> expect.to_be_true
+
+  // 32 bytes = min str8 (0xd9)
+  let s32 = create_string(32)
+  let assert Ok(encoded32) = pack(String(s32))
+  let assert <<0xd9, 32, _:bits>> = encoded32
+  Nil
+}
+
+pub fn boundary_str8_to_str16_test() {
+  // 255 bytes = max str8
+  let s255 = create_string(255)
+  let assert Ok(encoded255) = pack(String(s255))
+  let assert <<0xd9, 255, _:bits>> = encoded255
+
+  // 256 bytes = min str16
+  let s256 = create_string(256)
+  let assert Ok(encoded256) = pack(String(s256))
+  let assert <<0xda, 0x01, 0x00, _:bits>> = encoded256
+  Nil
+}
+
+pub fn boundary_bin8_to_bin16_test() {
+  // 255 bytes = max bin8
+  let b255 = create_bytes(255)
+  let assert Ok(encoded255) = pack(Binary(b255))
+  let assert <<0xc4, 255, _:bits>> = encoded255
+
+  // 256 bytes = min bin16
+  let b256 = create_bytes(256)
+  let assert Ok(encoded256) = pack(Binary(b256))
+  let assert <<0xc5, 0x01, 0x00, _:bits>> = encoded256
+  Nil
+}
+
+pub fn boundary_fixarray_to_array16_test() {
+  // 15 elements = max fixarray (0x90-0x9f)
+  let a15 = list.repeat(Integer(0), 15)
+  let assert Ok(encoded15) = pack(Array(a15))
+  let assert <<0x9f, _:bits>> = encoded15
+
+  // 16 elements = min array16 (0xdc)
+  let a16 = list.repeat(Integer(0), 16)
+  let assert Ok(encoded16) = pack(Array(a16))
+  let assert <<0xdc, 0x00, 0x10, _:bits>> = encoded16
+  Nil
+}
+
+pub fn boundary_fixmap_to_map16_test() {
+  // 15 entries = max fixmap (0x80-0x8f)
+  let m15 =
+    list.range(0, 14)
+    |> list.map(fn(i) { #(Integer(i), Integer(i)) })
+  let assert Ok(encoded15) = pack(Map(m15))
+  let assert <<0x8f, _:bits>> = encoded15
+
+  // 16 entries = min map16 (0xde)
+  let m16 =
+    list.range(0, 15)
+    |> list.map(fn(i) { #(Integer(i), Integer(i)) })
+  let assert Ok(encoded16) = pack(Map(m16))
+  let assert <<0xde, 0x00, 0x10, _:bits>> = encoded16
+  Nil
+}
+
+pub fn boundary_negative_int_formats_test() {
+  // -32 = max negative fixint
+  let assert Ok(enc_m32) = pack(Integer(-32))
+  let assert <<0xe0>> = enc_m32
+
+  // -33 = min int8
+  let assert Ok(enc_m33) = pack(Integer(-33))
+  let assert <<0xd0, _:bits>> = enc_m33
+
+  // -128 = max int8 (boundary)
+  let assert Ok(enc_m128) = pack(Integer(-128))
+  let assert <<0xd0, _:bits>> = enc_m128
+
+  // -129 = min int16
+  let assert Ok(enc_m129) = pack(Integer(-129))
+  let assert <<0xd1, _:bits>> = enc_m129
+
+  // -32768 = max int16 (boundary)
+  let assert Ok(enc_m32768) = pack(Integer(-32_768))
+  let assert <<0xd1, _:bits>> = enc_m32768
+
+  // -32769 = min int32
+  let assert Ok(enc_m32769) = pack(Integer(-32_769))
+  let assert <<0xd2, _:bits>> = enc_m32769
+
+  // -2147483648 = max int32 (boundary)
+  let assert Ok(enc_min32) = pack(Integer(-2_147_483_648))
+  let assert <<0xd2, _:bits>> = enc_min32
+
+  // -2147483649 = min int64
+  let assert Ok(enc_m2b) = pack(Integer(-2_147_483_649))
+  let assert <<0xd3, _:bits>> = enc_m2b
+  Nil
+}
+
+pub fn boundary_positive_int_formats_test() {
+  // 127 = max fixint
+  let assert Ok(enc127) = pack(Integer(127))
+  let assert <<0x7f>> = enc127
+
+  // 128 = min uint8
+  let assert Ok(enc128) = pack(Integer(128))
+  let assert <<0xcc, _:bits>> = enc128
+
+  // 255 = max uint8
+  let assert Ok(enc255) = pack(Integer(255))
+  let assert <<0xcc, _:bits>> = enc255
+
+  // 256 = min uint16
+  let assert Ok(enc256) = pack(Integer(256))
+  let assert <<0xcd, _:bits>> = enc256
+
+  // 65535 = max uint16
+  let assert Ok(enc65535) = pack(Integer(65_535))
+  let assert <<0xcd, _:bits>> = enc65535
+
+  // 65536 = min uint32
+  let assert Ok(enc65536) = pack(Integer(65_536))
+  let assert <<0xce, _:bits>> = enc65536
+
+  // 4294967295 = max uint32
+  let assert Ok(enc_max32) = pack(Integer(4_294_967_295))
+  let assert <<0xce, _:bits>> = enc_max32
+
+  // 4294967296 = min uint64
+  let assert Ok(enc_min64) = pack(Integer(4_294_967_296))
+  let assert <<0xcf, _:bits>> = enc_min64
+  Nil
+}
+
+pub fn boundary_ext_sizes_test() {
+  // 1 byte = fixext1 (0xd4)
+  let assert Ok(e1) = pack(Extension(1, <<0xaa>>))
+  let assert <<0xd4, _:bits>> = e1
+
+  // 2 bytes = fixext2 (0xd5)
+  let assert Ok(e2) = pack(Extension(1, <<0xaa, 0xbb>>))
+  let assert <<0xd5, _:bits>> = e2
+
+  // 3 bytes = ext8 (not a fixext size)
+  let assert Ok(e3) = pack(Extension(1, <<0xaa, 0xbb, 0xcc>>))
+  let assert <<0xc7, _:bits>> = e3
+
+  // 4 bytes = fixext4 (0xd6)
+  let assert Ok(e4) = pack(Extension(1, create_bytes(4)))
+  let assert <<0xd6, _:bits>> = e4
+
+  // 5 bytes = ext8 (not a fixext size)
+  let assert Ok(e5) = pack(Extension(1, create_bytes(5)))
+  let assert <<0xc7, _:bits>> = e5
+
+  // 8 bytes = fixext8 (0xd7)
+  let assert Ok(e8) = pack(Extension(1, create_bytes(8)))
+  let assert <<0xd7, _:bits>> = e8
+
+  // 16 bytes = fixext16 (0xd8)
+  let assert Ok(e16) = pack(Extension(1, create_bytes(16)))
+  let assert <<0xd8, _:bits>> = e16
+
+  // 17 bytes = ext8
+  let assert Ok(e17) = pack(Extension(1, create_bytes(17)))
+  let assert <<0xc7, _:bits>> = e17
+  Nil
+}
+
+// ============================================================================
 // Round-trip Tests
 // ============================================================================
 
