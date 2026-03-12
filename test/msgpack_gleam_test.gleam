@@ -1,6 +1,7 @@
 import gleam/dict
 import gleam/int
 import gleam/list
+import gleam/string
 import msgpack_gleam.{pack, unpack, unpack_exact}
 import msgpack_gleam/timestamp.{Timestamp}
 import msgpack_gleam/value.{
@@ -417,6 +418,285 @@ pub fn encode_negative_ext_type_test() {
 pub fn decode_negative_ext_type_test() {
   unpack(<<0xd6, 0xff, 0x00, 0x00, 0x00, 0x00>>)
   |> expect.to_equal(Ok(#(Extension(-1, <<0x00, 0x00, 0x00, 0x00>>), <<>>)))
+}
+
+// ============================================================================
+// Int32 Encoding/Decoding Tests (0xd2)
+// ============================================================================
+
+pub fn encode_int32_test() {
+  // -32769 is just below int16 range, should use int32
+  pack(Integer(-32_769)) |> expect.to_equal(Ok(<<0xd2, 0xff, 0xff, 0x7f, 0xff>>))
+  // Min int32
+  pack(Integer(-2_147_483_648))
+  |> expect.to_equal(Ok(<<0xd2, 0x80, 0x00, 0x00, 0x00>>))
+}
+
+pub fn decode_int32_test() {
+  unpack(<<0xd2, 0xff, 0xff, 0x7f, 0xff>>)
+  |> expect.to_equal(Ok(#(Integer(-32_769), <<>>)))
+  unpack(<<0xd2, 0x80, 0x00, 0x00, 0x00>>)
+  |> expect.to_equal(Ok(#(Integer(-2_147_483_648), <<>>)))
+  // -65536
+  unpack(<<0xd2, 0xff, 0xff, 0x00, 0x00>>)
+  |> expect.to_equal(Ok(#(Integer(-65_536), <<>>)))
+}
+
+pub fn roundtrip_int32_test() {
+  let test_values = [-32_769, -65_536, -100_000, -2_147_483_648]
+  list.each(test_values, fn(n) {
+    let value = Integer(n)
+    let assert Ok(encoded) = pack(value)
+    let assert Ok(decoded) = unpack_exact(encoded)
+    decoded |> expect.to_equal(value)
+  })
+}
+
+// ============================================================================
+// Int64 Negative Encoding/Decoding Tests (0xd3)
+// ============================================================================
+
+pub fn encode_int64_negative_test() {
+  // Just below int32 range
+  pack(Integer(-2_147_483_649))
+  |> expect.to_equal(
+    Ok(<<0xd3, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff>>),
+  )
+}
+
+pub fn decode_int64_negative_test() {
+  unpack(<<0xd3, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xff, 0xff>>)
+  |> expect.to_equal(Ok(#(Integer(-2_147_483_649), <<>>)))
+  // Min int64
+  unpack(<<0xd3, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00>>)
+  |> expect.to_equal(Ok(#(Integer(-9_223_372_036_854_775_808), <<>>)))
+}
+
+pub fn roundtrip_int64_negative_test() {
+  let test_values = [
+    -2_147_483_649, -4_294_967_296, -9_223_372_036_854_775_808,
+  ]
+  list.each(test_values, fn(n) {
+    let value = Integer(n)
+    let assert Ok(encoded) = pack(value)
+    let assert Ok(decoded) = unpack_exact(encoded)
+    decoded |> expect.to_equal(value)
+  })
+}
+
+// ============================================================================
+// Bin16/Bin32 Encoding/Decoding Tests (0xc5, 0xc6)
+// ============================================================================
+
+pub fn encode_bin16_test() {
+  // 256 bytes should use bin16
+  let data = create_bytes(256)
+  let assert Ok(encoded) = pack(Binary(data))
+  let assert <<0xc5, 0x01, 0x00, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_bin16_test() {
+  // bin16 with 2 bytes of data
+  unpack(<<0xc5, 0x00, 0x02, 0xaa, 0xbb>>)
+  |> expect.to_equal(Ok(#(Binary(<<0xaa, 0xbb>>), <<>>)))
+}
+
+pub fn roundtrip_bin16_test() {
+  let data = create_bytes(256)
+  let assert Ok(encoded) = pack(Binary(data))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  decoded |> expect.to_equal(Binary(data))
+}
+
+// ============================================================================
+// Str16 Encoding/Decoding Tests (0xda)
+// ============================================================================
+
+pub fn encode_str16_test() {
+  // 256 chars should use str16
+  let s = create_string(256)
+  let assert Ok(encoded) = pack(String(s))
+  let assert <<0xda, 0x01, 0x00, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_str16_test() {
+  // str16 with 2 chars
+  unpack(<<0xda, 0x00, 0x02, 0x61, 0x62>>)
+  |> expect.to_equal(Ok(#(String("ab"), <<>>)))
+}
+
+pub fn roundtrip_str16_test() {
+  let s = create_string(256)
+  let assert Ok(encoded) = pack(String(s))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  decoded |> expect.to_equal(String(s))
+}
+
+// ============================================================================
+// Fixext2/Fixext16 Encoding/Decoding Tests (0xd5, 0xd8)
+// ============================================================================
+
+pub fn encode_fixext2_test() {
+  pack(Extension(2, <<0xaa, 0xbb>>))
+  |> expect.to_equal(Ok(<<0xd5, 0x02, 0xaa, 0xbb>>))
+}
+
+pub fn decode_fixext2_test() {
+  unpack(<<0xd5, 0x02, 0xaa, 0xbb>>)
+  |> expect.to_equal(Ok(#(Extension(2, <<0xaa, 0xbb>>), <<>>)))
+}
+
+pub fn encode_fixext16_test() {
+  let data =
+    <<
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+      0x0d, 0x0e, 0x0f, 0x10,
+    >>
+  let assert Ok(encoded) = pack(Extension(5, data))
+  let assert <<0xd8, 0x05, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_fixext16_test() {
+  let data =
+    <<
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+      0x0d, 0x0e, 0x0f, 0x10,
+    >>
+  unpack(<<0xd8, 0x05, data:bits>>)
+  |> expect.to_equal(Ok(#(Extension(5, data), <<>>)))
+}
+
+// ============================================================================
+// Ext8/Ext16/Ext32 Encoding/Decoding Tests (0xc7, 0xc8, 0xc9)
+// ============================================================================
+
+pub fn encode_ext8_test() {
+  // 0 bytes (non-fixext size) should use ext8
+  pack(Extension(1, <<>>))
+  |> expect.to_equal(Ok(<<0xc7, 0x00, 0x01>>))
+  // 3 bytes (non-fixext size) should use ext8
+  pack(Extension(1, <<0xaa, 0xbb, 0xcc>>))
+  |> expect.to_equal(Ok(<<0xc7, 0x03, 0x01, 0xaa, 0xbb, 0xcc>>))
+}
+
+pub fn decode_ext8_test() {
+  unpack(<<0xc7, 0x00, 0x01>>)
+  |> expect.to_equal(Ok(#(Extension(1, <<>>), <<>>)))
+  unpack(<<0xc7, 0x03, 0x01, 0xaa, 0xbb, 0xcc>>)
+  |> expect.to_equal(Ok(#(Extension(1, <<0xaa, 0xbb, 0xcc>>), <<>>)))
+}
+
+pub fn encode_ext16_test() {
+  // 256 bytes should use ext16
+  let data = create_bytes(256)
+  let assert Ok(encoded) = pack(Extension(3, data))
+  let assert <<0xc8, 0x01, 0x00, 0x03, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_ext16_test() {
+  // ext16 with 2 bytes of data
+  unpack(<<0xc8, 0x00, 0x02, 0x03, 0xaa, 0xbb>>)
+  |> expect.to_equal(Ok(#(Extension(3, <<0xaa, 0xbb>>), <<>>)))
+}
+
+// ============================================================================
+// Array16 Encoding/Decoding Tests (0xdc)
+// ============================================================================
+
+pub fn encode_array16_test() {
+  // 16 elements should use array16
+  let items = list.repeat(Integer(1), 16)
+  let assert Ok(encoded) = pack(Array(items))
+  let assert <<0xdc, 0x00, 0x10, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_array16_test() {
+  // array16 with 16 fixint(1) elements
+  let assert Ok(encoded) = pack(Array(list.repeat(Integer(1), 16)))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  let assert Array(items) = decoded
+  list.length(items) |> expect.to_equal(16)
+}
+
+pub fn roundtrip_array16_test() {
+  let items = list.range(0, 19) |> list.map(Integer)
+  let assert Ok(encoded) = pack(Array(items))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  decoded |> expect.to_equal(Array(items))
+}
+
+// ============================================================================
+// Map16 Encoding/Decoding Tests (0xde)
+// ============================================================================
+
+pub fn encode_map16_test() {
+  // 16 entries should use map16
+  let pairs =
+    list.range(0, 15)
+    |> list.map(fn(i) { #(Integer(i), Integer(i)) })
+  let assert Ok(encoded) = pack(Map(pairs))
+  let assert <<0xde, 0x00, 0x10, _:bits>> = encoded
+  Nil
+}
+
+pub fn decode_map16_test() {
+  let pairs =
+    list.range(0, 15)
+    |> list.map(fn(i) { #(Integer(i), Integer(i)) })
+  let assert Ok(encoded) = pack(Map(pairs))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  let assert Map(decoded_pairs) = decoded
+  list.length(decoded_pairs) |> expect.to_equal(16)
+}
+
+pub fn roundtrip_map16_test() {
+  let pairs =
+    list.range(0, 19)
+    |> list.map(fn(i) { #(String("key" <> int.to_string(i)), Integer(i)) })
+  let assert Ok(encoded) = pack(Map(pairs))
+  let assert Ok(decoded) = unpack_exact(encoded)
+  decoded |> expect.to_equal(Map(pairs))
+}
+
+// ============================================================================
+// Float Edge Cases
+// ============================================================================
+
+pub fn roundtrip_float_edge_cases_test() {
+  let test_values = [0.0, -0.0, 1.5, -1.5, 3.14, -3.14, 1.0e100, 1.0e-100]
+  list.each(test_values, fn(f) {
+    let value = Float(f)
+    let assert Ok(encoded) = pack(value)
+    let assert Ok(decoded) = unpack_exact(encoded)
+    decoded |> expect.to_equal(value)
+  })
+}
+
+// ============================================================================
+// Helpers for generating test data
+// ============================================================================
+
+fn create_bytes(n: Int) -> BitArray {
+  create_bytes_acc(n, <<>>)
+}
+
+fn create_bytes_acc(n: Int, acc: BitArray) -> BitArray {
+  case n {
+    0 -> acc
+    _ -> {
+      let byte = n % 256
+      create_bytes_acc(n - 1, <<acc:bits, byte:8>>)
+    }
+  }
+}
+
+fn create_string(n: Int) -> String {
+  list.repeat("a", n) |> string.join("")
 }
 
 // ============================================================================
