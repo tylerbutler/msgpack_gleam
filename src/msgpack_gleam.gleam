@@ -111,15 +111,3 @@ pub fn unpack(data: BitArray) -> Result(#(Value, BitArray), DecodeError) {
 pub fn unpack_exact(data: BitArray) -> Result(Value, DecodeError) {
   decode.decode_exact(data)
 }
-
-/// Re-export Value type for convenience
-pub type MsgPackValue =
-  Value
-
-/// Re-export encode error type
-pub type PackError =
-  EncodeError
-
-/// Re-export decode error type
-pub type UnpackError =
-  DecodeError

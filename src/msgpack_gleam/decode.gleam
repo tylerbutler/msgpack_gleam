@@ -51,8 +51,19 @@ pub fn decode(data: BitArray) -> Result(#(Value, BitArray), DecodeError) {
     // int64 (0xd3)
     <<0xd3, n:64-signed, rest:bits>> -> Ok(#(value.Integer(n), rest))
 
+    // float32 NaN/Infinity (must be before the normal float32 pattern)
+    <<0xca, _sign:1, 0xff:8, mantissa:23, _rest:bits>> if mantissa != 0 ->
+      Error(error.UnsupportedFloat)
+    <<0xca, _sign:1, 0xff:8, 0:23, _rest:bits>> -> Error(error.UnsupportedFloat)
+
     // float32 (0xca)
     <<0xca, f:32-float, rest:bits>> -> Ok(#(value.Float(f), rest))
+
+    // float64 NaN/Infinity (must be before the normal float64 pattern)
+    <<0xcb, _sign:1, 0x7ff:11, mantissa:52, _rest:bits>> if mantissa != 0 ->
+      Error(error.UnsupportedFloat)
+    <<0xcb, _sign:1, 0x7ff:11, 0:52, _rest:bits>> ->
+      Error(error.UnsupportedFloat)
 
     // float64 (0xcb)
     <<0xcb, f:64-float, rest:bits>> -> Ok(#(value.Float(f), rest))
@@ -137,7 +148,51 @@ pub fn decode(data: BitArray) -> Result(#(Value, BitArray), DecodeError) {
     // Reserved formats (0xc1)
     <<0xc1, _:bits>> -> Error(error.ReservedFormat(0xc1))
 
-    // Invalid/incomplete format
+    // ========================================================================
+    // Truncated format handlers
+    // When a valid format byte is present but insufficient payload follows,
+    // Gleam's bit-pattern matching skips the full pattern. These catch
+    // patterns return UnexpectedEof instead of falling through to InvalidFormat.
+    // ========================================================================
+    // Truncated numeric types
+    <<0xcc, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xcd, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xce, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xcf, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd0, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd1, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd2, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd3, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xca, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xcb, _:bits>> -> Error(error.UnexpectedEof)
+
+    // Truncated string/binary length headers or data
+    <<0xd9, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xda, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xdb, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xc4, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xc5, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xc6, _:bits>> -> Error(error.UnexpectedEof)
+
+    // Truncated fixext types
+    <<0xd4, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd5, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd6, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd7, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xd8, _:bits>> -> Error(error.UnexpectedEof)
+
+    // Truncated ext types
+    <<0xc7, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xc8, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xc9, _:bits>> -> Error(error.UnexpectedEof)
+
+    // Truncated array/map length headers
+    <<0xdc, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xdd, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xde, _:bits>> -> Error(error.UnexpectedEof)
+    <<0xdf, _:bits>> -> Error(error.UnexpectedEof)
+
+    // Invalid format byte (no known format matches)
     <<byte:8, _:bits>> -> Error(error.InvalidFormat(byte))
 
     // Catch-all for non-byte-aligned or other edge cases

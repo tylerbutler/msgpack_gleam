@@ -1,6 +1,7 @@
 import gleam/dict
 import gleam/int
 import gleam/option.{None, Some}
+import gleam/result
 import gleam/string
 import msgpack_gleam
 import msgpack_gleam/codec.{type Codec}
@@ -217,9 +218,9 @@ pub fn dict_codec_test() {
 
 fn person_codec() -> Codec(Person) {
   codec.object2(
-    Person,
-    codec.field("name", codec.string(), fn(p: Person) { p.name }),
-    codec.field("age", codec.int(), fn(p: Person) { p.age }),
+    constructor: Person,
+    field1: codec.field("name", codec.string(), fn(p: Person) { p.name }),
+    field2: codec.field("age", codec.int(), fn(p: Person) { p.age }),
   )
 }
 
@@ -244,11 +245,15 @@ pub fn object2_codec_test() {
 
 fn user_codec() -> Codec(User) {
   codec.object4(
-    User,
-    codec.field("id", codec.int(), fn(u: User) { u.id }),
-    codec.field("name", codec.string(), fn(u: User) { u.name }),
-    codec.field("email", codec.nullable(codec.string()), fn(u: User) { u.email }),
-    codec.field("tags", codec.list(codec.string()), fn(u: User) { u.tags }),
+    constructor: User,
+    field1: codec.field("id", codec.int(), fn(u: User) { u.id }),
+    field2: codec.field("name", codec.string(), fn(u: User) { u.name }),
+    field3: codec.field("email", codec.nullable(codec.string()), fn(u: User) {
+      u.email
+    }),
+    field4: codec.field("tags", codec.list(codec.string()), fn(u: User) {
+      u.tags
+    }),
   )
 }
 
@@ -503,7 +508,7 @@ fn tree_codec() -> Codec(TreeNode) {
             Error(e) -> Error(e)
           }
         }
-        other -> Error(codec.TypeMismatch("Map", value_type_name(other)))
+        other -> Error(codec.TypeMismatch("Map", value.type_name(other)))
       }
     },
   )
@@ -512,47 +517,29 @@ fn tree_codec() -> Codec(TreeNode) {
 fn find_string_field(
   pairs: List(#(value.Value, value.Value)),
   name: String,
-) -> Result(String, codec.DecodeError) {
-  case pairs {
-    [] -> Error(codec.MissingField(name))
-    [#(value.String(k), value.String(v)), ..rest] ->
-      case k == name {
-        True -> Ok(v)
-        False -> find_string_field(rest, name)
-      }
-    [#(value.String(k), other), ..rest] ->
-      case k == name {
-        True -> Error(codec.TypeMismatch("String", value_type_name(other)))
-        False -> find_string_field(rest, name)
-      }
-    [_, ..rest] -> find_string_field(rest, name)
+) -> Result(String, codec.CodecDecodeError) {
+  use v <- result.try(find_value_field(pairs, name))
+  case v {
+    value.String(s) -> Ok(s)
+    other -> Error(codec.TypeMismatch("String", value.type_name(other)))
   }
 }
 
 fn find_int_field(
   pairs: List(#(value.Value, value.Value)),
   name: String,
-) -> Result(Int, codec.DecodeError) {
-  case pairs {
-    [] -> Error(codec.MissingField(name))
-    [#(value.String(k), value.Integer(v)), ..rest] ->
-      case k == name {
-        True -> Ok(v)
-        False -> find_int_field(rest, name)
-      }
-    [#(value.String(k), other), ..rest] ->
-      case k == name {
-        True -> Error(codec.TypeMismatch("Integer", value_type_name(other)))
-        False -> find_int_field(rest, name)
-      }
-    [_, ..rest] -> find_int_field(rest, name)
+) -> Result(Int, codec.CodecDecodeError) {
+  use v <- result.try(find_value_field(pairs, name))
+  case v {
+    value.Integer(i) -> Ok(i)
+    other -> Error(codec.TypeMismatch("Integer", value.type_name(other)))
   }
 }
 
 fn find_value_field(
   pairs: List(#(value.Value, value.Value)),
   name: String,
-) -> Result(value.Value, codec.DecodeError) {
+) -> Result(value.Value, codec.CodecDecodeError) {
   case pairs {
     [] -> Error(codec.MissingField(name))
     [#(value.String(k), v), ..rest] ->
@@ -561,20 +548,6 @@ fn find_value_field(
         False -> find_value_field(rest, name)
       }
     [_, ..rest] -> find_value_field(rest, name)
-  }
-}
-
-fn value_type_name(v: value.Value) -> String {
-  case v {
-    value.Nil -> "Nil"
-    value.Boolean(_) -> "Boolean"
-    value.Integer(_) -> "Integer"
-    value.Float(_) -> "Float"
-    value.String(_) -> "String"
-    value.Binary(_) -> "Binary"
-    value.Array(_) -> "Array"
-    value.Map(_) -> "Map"
-    value.Extension(_, _) -> "Extension"
   }
 }
 
@@ -641,4 +614,355 @@ pub fn nested_structure_roundtrip_test() {
 
   decoded_users
   |> expect.to_equal(users)
+}
+
+// ============================================================================
+// Robustness & Edge-Case Tests
+// ============================================================================
+
+pub fn object_extra_fields_ignored_test() {
+  let c = person_codec()
+  let v =
+    value.Map([
+      #(value.String("name"), value.String("Alice")),
+      #(value.String("age"), value.Integer(30)),
+      #(value.String("height"), value.Float(1.65)),
+    ])
+  codec.decode(c, v) |> expect.to_equal(Ok(Person("Alice", 30)))
+}
+
+pub fn object_field_order_independence_test() {
+  let c = person_codec()
+  let v =
+    value.Map([
+      #(value.String("age"), value.Integer(30)),
+      #(value.String("name"), value.String("Alice")),
+    ])
+  codec.decode(c, v) |> expect.to_equal(Ok(Person("Alice", 30)))
+}
+
+pub fn string_dict_non_string_key_error_test() {
+  let c = codec.string_dict(codec.int())
+  let v = value.Map([#(value.Integer(1), value.Integer(42))])
+  let assert Error(_) = codec.decode(c, v)
+  Nil
+}
+
+pub fn dict_key_decode_error_test() {
+  let c = codec.dict(codec.int(), codec.string())
+  let v = value.Map([#(value.String("not-an-int"), value.String("hello"))])
+  let assert Error(_) = codec.decode(c, v)
+  Nil
+}
+
+pub fn dict_value_decode_error_test() {
+  let c = codec.dict(codec.string(), codec.int())
+  let v = value.Map([#(value.String("key"), value.String("not-an-int"))])
+  let assert Error(_) = codec.decode(c, v)
+  Nil
+}
+
+pub fn nullable_nil_decode_test() {
+  let c = codec.nullable(codec.string())
+  codec.decode(c, value.Nil) |> expect.to_equal(Ok(option.None))
+}
+
+pub fn nullable_value_decode_test() {
+  let c = codec.nullable(codec.string())
+  codec.decode(c, value.String("hello"))
+  |> expect.to_equal(Ok(option.Some("hello")))
+}
+
+pub fn list_empty_decode_test() {
+  let c = codec.list(codec.int())
+  codec.decode(c, value.Array([])) |> expect.to_equal(Ok([]))
+}
+
+pub fn non_empty_string_empty_error_test() {
+  let c = codec.non_empty_string()
+  let assert Error(codec.OutOfRange(_)) = codec.decode(c, value.String(""))
+  Nil
+}
+
+pub fn int_range_at_min_test() {
+  let c = codec.int_range(0, 100)
+  codec.decode(c, value.Integer(0)) |> expect.to_equal(Ok(0))
+}
+
+pub fn int_range_at_max_test() {
+  let c = codec.int_range(0, 100)
+  codec.decode(c, value.Integer(100)) |> expect.to_equal(Ok(100))
+}
+
+pub fn int_range_below_min_test() {
+  let c = codec.int_range(0, 100)
+  let assert Error(codec.OutOfRange(_)) = codec.decode(c, value.Integer(-1))
+  Nil
+}
+
+pub fn int_range_above_max_test() {
+  let c = codec.int_range(0, 100)
+  let assert Error(codec.OutOfRange(_)) = codec.decode(c, value.Integer(101))
+  Nil
+}
+
+// ============================================================================
+// Additional Test Types
+// ============================================================================
+
+type Wrapper {
+  Wrapper(val: Int)
+}
+
+type Triple {
+  Triple(a: String, b: Int, c: Bool)
+}
+
+type BigRecord {
+  BigRecord(
+    f1: String,
+    f2: Int,
+    f3: Bool,
+    f4: Float,
+    f5: String,
+    f6: Int,
+    f7: Bool,
+    f8: String,
+  )
+}
+
+// ============================================================================
+// Extension Codec Tests
+// ============================================================================
+
+pub fn extension_codec_encode_test() {
+  let c = codec.extension(5)
+  codec.encode(c, <<1, 2, 3>>)
+  |> expect.to_equal(value.Extension(5, <<1, 2, 3>>))
+}
+
+pub fn extension_codec_decode_test() {
+  let c = codec.extension(5)
+  codec.decode(c, value.Extension(5, <<4, 5>>)) |> expect.to_equal(Ok(<<4, 5>>))
+}
+
+pub fn extension_codec_wrong_type_test() {
+  let c = codec.extension(5)
+  let assert Error(codec.ExtensionTypeMismatch(5, 7)) =
+    codec.decode(c, value.Extension(7, <<>>))
+  Nil
+}
+
+pub fn extension_codec_non_extension_test() {
+  let c = codec.extension(5)
+  let assert Error(codec.TypeMismatch(_, _)) =
+    codec.decode(c, value.Integer(42))
+  Nil
+}
+
+pub fn any_extension_codec_encode_test() {
+  let c = codec.any_extension()
+  codec.encode(c, #(3, <<0xAB>>))
+  |> expect.to_equal(value.Extension(3, <<0xAB>>))
+}
+
+pub fn any_extension_codec_decode_test() {
+  let c = codec.any_extension()
+  codec.decode(c, value.Extension(3, <<0xAB>>))
+  |> expect.to_equal(Ok(#(3, <<0xAB>>)))
+}
+
+pub fn any_extension_codec_non_extension_test() {
+  let c = codec.any_extension()
+  let assert Error(codec.TypeMismatch(_, _)) =
+    codec.decode(c, value.String("x"))
+  Nil
+}
+
+// ============================================================================
+// Object Boundary Tests (object1, object3, object8)
+// ============================================================================
+
+pub fn object1_encode_decode_test() {
+  let c =
+    codec.object1(
+      constructor: Wrapper,
+      field1: codec.field("val", codec.int(), fn(w: Wrapper) { w.val }),
+    )
+  let w = Wrapper(42)
+  let encoded = codec.encode(c, w)
+  codec.decode(c, encoded) |> expect.to_equal(Ok(w))
+}
+
+pub fn object3_encode_decode_test() {
+  let c =
+    codec.object3(
+      constructor: Triple,
+      field1: codec.field("a", codec.string(), fn(t: Triple) { t.a }),
+      field2: codec.field("b", codec.int(), fn(t: Triple) { t.b }),
+      field3: codec.field("c", codec.bool(), fn(t: Triple) { t.c }),
+    )
+  let t = Triple("hello", 42, True)
+  let encoded = codec.encode(c, t)
+  codec.decode(c, encoded) |> expect.to_equal(Ok(t))
+}
+
+pub fn object8_encode_decode_test() {
+  let c =
+    codec.object8(
+      constructor: BigRecord,
+      field1: codec.field("f1", codec.string(), fn(r: BigRecord) { r.f1 }),
+      field2: codec.field("f2", codec.int(), fn(r: BigRecord) { r.f2 }),
+      field3: codec.field("f3", codec.bool(), fn(r: BigRecord) { r.f3 }),
+      field4: codec.field("f4", codec.float(), fn(r: BigRecord) { r.f4 }),
+      field5: codec.field("f5", codec.string(), fn(r: BigRecord) { r.f5 }),
+      field6: codec.field("f6", codec.int(), fn(r: BigRecord) { r.f6 }),
+      field7: codec.field("f7", codec.bool(), fn(r: BigRecord) { r.f7 }),
+      field8: codec.field("f8", codec.string(), fn(r: BigRecord) { r.f8 }),
+    )
+  let r = BigRecord("a", 1, True, 2.5, "b", 3, False, "c")
+  let encoded = codec.encode(c, r)
+  codec.decode(c, encoded) |> expect.to_equal(Ok(r))
+}
+
+pub fn object8_field_ordering_test() {
+  let c =
+    codec.object8(
+      constructor: BigRecord,
+      field1: codec.field("f1", codec.string(), fn(r: BigRecord) { r.f1 }),
+      field2: codec.field("f2", codec.int(), fn(r: BigRecord) { r.f2 }),
+      field3: codec.field("f3", codec.bool(), fn(r: BigRecord) { r.f3 }),
+      field4: codec.field("f4", codec.float(), fn(r: BigRecord) { r.f4 }),
+      field5: codec.field("f5", codec.string(), fn(r: BigRecord) { r.f5 }),
+      field6: codec.field("f6", codec.int(), fn(r: BigRecord) { r.f6 }),
+      field7: codec.field("f7", codec.bool(), fn(r: BigRecord) { r.f7 }),
+      field8: codec.field("f8", codec.string(), fn(r: BigRecord) { r.f8 }),
+    )
+  let r = BigRecord("alpha", 100, True, 3.14, "beta", 200, False, "gamma")
+  let encoded = codec.encode(c, r)
+  let assert Ok(decoded) = codec.decode(c, encoded)
+  decoded.f1 |> expect.to_equal("alpha")
+  decoded.f2 |> expect.to_equal(100)
+  decoded.f3 |> expect.to_equal(True)
+  decoded.f5 |> expect.to_equal("beta")
+  decoded.f6 |> expect.to_equal(200)
+  decoded.f7 |> expect.to_equal(False)
+  decoded.f8 |> expect.to_equal("gamma")
+}
+
+// ============================================================================
+// Misc Codec Tests (succeed, fail, raw_value, tuple4)
+// ============================================================================
+
+pub fn succeed_codec_test() {
+  let c = codec.succeed(42)
+  codec.decode(c, value.Nil) |> expect.to_equal(Ok(42))
+  codec.decode(c, value.String("anything")) |> expect.to_equal(Ok(42))
+}
+
+pub fn fail_codec_test() {
+  let c = codec.fail("nope")
+  let assert Error(codec.CustomError("nope")) = codec.decode(c, value.Nil)
+  Nil
+}
+
+pub fn raw_value_encode_test() {
+  let c = codec.raw_value()
+  let v = value.Array([value.Integer(1), value.String("x")])
+  codec.encode(c, v) |> expect.to_equal(v)
+}
+
+pub fn raw_value_decode_test() {
+  let c = codec.raw_value()
+  let v = value.Array([value.Integer(1), value.String("x")])
+  codec.decode(c, v) |> expect.to_equal(Ok(v))
+}
+
+pub fn tuple4_encode_decode_test() {
+  let c = codec.tuple4(codec.string(), codec.int(), codec.bool(), codec.float())
+  let t = #("hello", 42, True, 3.14)
+  let encoded = codec.encode(c, t)
+  codec.decode(c, encoded) |> expect.to_equal(Ok(t))
+}
+
+// ============================================================================
+// format_error Tests
+// ============================================================================
+
+pub fn format_error_type_mismatch_test() {
+  codec.format_error(codec.TypeMismatch("String", "Integer"))
+  |> expect.to_equal("expected String, got Integer")
+}
+
+pub fn format_error_missing_field_test() {
+  codec.format_error(codec.MissingField("name"))
+  |> expect.to_equal("missing field \"name\"")
+}
+
+pub fn format_error_index_error_test() {
+  let err = codec.IndexError(2, codec.TypeMismatch("String", "Integer"))
+  codec.format_error(err)
+  |> expect.to_equal("at $[2]: expected String, got Integer")
+}
+
+pub fn format_error_extension_type_mismatch_test() {
+  codec.format_error(codec.ExtensionTypeMismatch(5, 7))
+  |> expect.to_equal("expected extension type 5, got 7")
+}
+
+pub fn format_error_out_of_range_test() {
+  codec.format_error(codec.OutOfRange("Value must be 0-100"))
+  |> expect.to_equal("Value must be 0-100")
+}
+
+pub fn format_error_custom_error_test() {
+  codec.format_error(codec.CustomError("something went wrong"))
+  |> expect.to_equal("something went wrong")
+}
+
+pub fn format_error_all_failed_test() {
+  let err =
+    codec.AllFailed([
+      codec.TypeMismatch("String", "Integer"),
+      codec.MissingField("x"),
+    ])
+  codec.format_error(err)
+  |> expect.to_equal(
+    "all alternatives failed: [expected String, got Integer, missing field \"x\"]",
+  )
+}
+
+pub fn format_error_nested_field_error_test() {
+  let err =
+    codec.FieldError(
+      "users",
+      codec.IndexError(
+        0,
+        codec.FieldError("name", codec.TypeMismatch("String", "Integer")),
+      ),
+    )
+  codec.format_error(err)
+  |> expect.to_equal("at $.users[0].name: expected String, got Integer")
+}
+
+// ============================================================================
+// Nil Codec Tests
+// ============================================================================
+
+pub fn nil_codec_encode_test() {
+  let c = codec.nil()
+  codec.encode(c, Nil)
+  |> expect.to_equal(value.Nil)
+}
+
+pub fn nil_codec_decode_test() {
+  let c = codec.nil()
+  codec.decode(c, value.Nil)
+  |> expect.to_equal(Ok(Nil))
+}
+
+pub fn nil_codec_decode_error_test() {
+  let c = codec.nil()
+  let assert Error(_) = codec.decode(c, value.Integer(42))
+  Nil
 }

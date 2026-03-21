@@ -3,6 +3,7 @@ import gleam/int
 import gleam/list
 import gleam/string
 import msgpack_gleam.{pack, unpack, unpack_exact}
+import msgpack_gleam/error
 import msgpack_gleam/timestamp.{Timestamp}
 import msgpack_gleam/value.{
   Array, Binary, Boolean, Extension, Float, Integer, Map, Nil, String,
@@ -426,7 +427,8 @@ pub fn decode_negative_ext_type_test() {
 
 pub fn encode_int32_test() {
   // -32769 is just below int16 range, should use int32
-  pack(Integer(-32_769)) |> expect.to_equal(Ok(<<0xd2, 0xff, 0xff, 0x7f, 0xff>>))
+  pack(Integer(-32_769))
+  |> expect.to_equal(Ok(<<0xd2, 0xff, 0xff, 0x7f, 0xff>>))
   // Min int32
   pack(Integer(-2_147_483_648))
   |> expect.to_equal(Ok(<<0xd2, 0x80, 0x00, 0x00, 0x00>>))
@@ -473,9 +475,7 @@ pub fn decode_int64_negative_test() {
 }
 
 pub fn roundtrip_int64_negative_test() {
-  let test_values = [
-    -2_147_483_649, -4_294_967_296, -9_223_372_036_854_775_808,
-  ]
+  let test_values = [-2_147_483_649, -4_294_967_296, -9_223_372_036_854_775_808]
   list.each(test_values, fn(n) {
     let value = Integer(n)
     let assert Ok(encoded) = pack(value)
@@ -549,22 +549,20 @@ pub fn decode_fixext2_test() {
 }
 
 pub fn encode_fixext16_test() {
-  let data =
-    <<
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
-      0x0d, 0x0e, 0x0f, 0x10,
-    >>
+  let data = <<
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+    0x0e, 0x0f, 0x10,
+  >>
   let assert Ok(encoded) = pack(Extension(5, data))
   let assert <<0xd8, 0x05, _:bits>> = encoded
   Nil
 }
 
 pub fn decode_fixext16_test() {
-  let data =
-    <<
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
-      0x0d, 0x0e, 0x0f, 0x10,
-    >>
+  let data = <<
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+    0x0e, 0x0f, 0x10,
+  >>
   unpack(<<0xd8, 0x05, data:bits>>)
   |> expect.to_equal(Ok(#(Extension(5, data), <<>>)))
 }
@@ -971,201 +969,100 @@ pub fn roundtrip_complex_test() {
 // Test Suite Decoding Tests (using official msgpack-test-suite)
 // ============================================================================
 
-pub fn decode_all_nil_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "10.nil.yaml")
+const test_suite_path = "test/test_data/msgpack-test-suite.json"
 
+fn assert_suite_section(
+  section: String,
+  convert: fn(test_helpers.TestValue) -> value.Value,
+) {
+  let assert Ok(suite) = load_test_suite(test_suite_path)
+  let cases = get_test_cases(suite, section)
   list.each(cases, fn(test_case) {
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(Nil)
-    })
-  })
-}
-
-pub fn decode_all_bool_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "11.bool.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      test_helpers.BoolValue(b) -> Boolean(b)
-      _ -> panic as "Expected bool value"
-    }
-
+    let expected = convert(test_case.value)
     list.each(test_case.msgpack, fn(encoding) {
       let assert Ok(decoded) = unpack_exact(encoding)
       decoded |> expect.to_equal(expected)
     })
+  })
+}
+
+fn assert_suite_section_numeric(section: String) {
+  let assert Ok(suite) = load_test_suite(test_suite_path)
+  let cases = get_test_cases(suite, section)
+  list.each(cases, fn(test_case) {
+    let assert IntValue(expected_int) = test_case.value
+    list.each(test_case.msgpack, fn(encoding) {
+      let assert Ok(decoded) = unpack_exact(encoding)
+      assert_numeric_equal(decoded, expected_int)
+    })
+  })
+}
+
+pub fn decode_all_nil_encodings_test() {
+  assert_suite_section("10.nil.yaml", fn(_) { Nil })
+}
+
+pub fn decode_all_bool_encodings_test() {
+  assert_suite_section("11.bool.yaml", fn(tv) {
+    let assert BoolValue(b) = tv
+    Boolean(b)
   })
 }
 
 pub fn decode_all_binary_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "12.binary.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      BinaryValue(b) -> Binary(b)
-      _ -> panic as "Expected binary value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
+  assert_suite_section("12.binary.yaml", fn(tv) {
+    let assert BinaryValue(b) = tv
+    Binary(b)
   })
 }
 
 pub fn decode_all_negative_number_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "21.number-negative.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected_int = case test_case.value {
-      IntValue(n) -> n
-      _ -> panic as "Expected int value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      assert_numeric_equal(decoded, expected_int)
-    })
-  })
+  assert_suite_section_numeric("21.number-negative.yaml")
 }
 
 pub fn decode_all_float_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "22.number-float.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      FloatValue(f) -> Float(f)
-      _ -> panic as "Expected float value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
+  assert_suite_section("22.number-float.yaml", fn(tv) {
+    let assert FloatValue(f) = tv
+    Float(f)
   })
 }
 
 pub fn decode_all_bignum_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "23.number-bignum.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected_int = case test_case.value {
-      IntValue(n) -> n
-      _ -> panic as "Expected int value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      assert_numeric_equal(decoded, expected_int)
-    })
-  })
+  assert_suite_section_numeric("23.number-bignum.yaml")
 }
 
 pub fn decode_all_string_utf8_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "31.string-utf8.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      StringValue(s) -> String(s)
-      _ -> panic as "Expected string value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
+  assert_suite_section("31.string-utf8.yaml", fn(tv) {
+    let assert StringValue(s) = tv
+    String(s)
   })
 }
 
 pub fn decode_all_string_emoji_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "32.string-emoji.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      StringValue(s) -> String(s)
-      _ -> panic as "Expected string value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
+  assert_suite_section("32.string-emoji.yaml", fn(tv) {
+    let assert StringValue(s) = tv
+    String(s)
   })
 }
 
 pub fn decode_all_array_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "40.array.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = test_value_to_value(test_case.value)
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
-  })
+  assert_suite_section("40.array.yaml", test_value_to_value)
 }
 
 pub fn decode_all_map_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "41.map.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = test_value_to_value(test_case.value)
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
-  })
+  assert_suite_section("41.map.yaml", test_value_to_value)
 }
 
 pub fn decode_all_nested_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "42.nested.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = test_value_to_value(test_case.value)
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
-  })
+  assert_suite_section("42.nested.yaml", test_value_to_value)
 }
 
 pub fn decode_all_timestamp_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
+  let assert Ok(suite) = load_test_suite(test_suite_path)
   let cases = get_test_cases(suite, "50.timestamp.yaml")
-
   list.each(cases, fn(test_case) {
-    let #(expected_seconds, expected_nanos) = case test_case.value {
-      TimestampValue(s, ns) -> #(s, ns)
-      _ -> panic as "Expected timestamp value"
-    }
-
+    let assert TimestampValue(expected_seconds, expected_nanos) =
+      test_case.value
     list.each(test_case.msgpack, fn(encoding) {
       let assert Ok(decoded_value) = unpack_exact(encoding)
       let assert Ok(ts) = timestamp.decode(decoded_value)
@@ -1176,58 +1073,17 @@ pub fn decode_all_timestamp_encodings_test() {
 }
 
 pub fn decode_all_ext_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "60.ext.yaml")
-
-  list.each(cases, fn(test_case) {
-    let #(expected_type, expected_data) = case test_case.value {
-      ExtValue(t, d) -> #(t, d)
-      _ -> panic as "Expected ext value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      let assert Extension(tc, data) = decoded
-      tc |> expect.to_equal(expected_type)
-      data |> expect.to_equal(expected_data)
-    })
-  })
+  assert_suite_section("60.ext.yaml", test_value_to_value)
 }
 
 pub fn decode_all_positive_number_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "20.number-positive.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected_int = case test_case.value {
-      IntValue(n) -> n
-      _ -> panic as "Expected int value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      assert_numeric_equal(decoded, expected_int)
-    })
-  })
+  assert_suite_section_numeric("20.number-positive.yaml")
 }
 
 pub fn decode_all_string_ascii_encodings_test() {
-  let assert Ok(suite) =
-    load_test_suite("test/test_data/msgpack-test-suite.json")
-  let cases = get_test_cases(suite, "30.string-ascii.yaml")
-
-  list.each(cases, fn(test_case) {
-    let expected = case test_case.value {
-      StringValue(s) -> String(s)
-      _ -> panic as "Expected string value"
-    }
-
-    list.each(test_case.msgpack, fn(encoding) {
-      let assert Ok(decoded) = unpack_exact(encoding)
-      decoded |> expect.to_equal(expected)
-    })
+  assert_suite_section("30.string-ascii.yaml", fn(tv) {
+    let assert StringValue(s) = tv
+    String(s)
   })
 }
 
@@ -1331,4 +1187,210 @@ pub fn timestamp_is_timestamp_test() {
   // Other value types are not timestamps
   timestamp.is_timestamp(Nil) |> expect.to_be_false
   timestamp.is_timestamp(Integer(0)) |> expect.to_be_false
+}
+
+// ============================================================================
+// Multi-value Stream Decode Tests
+// ============================================================================
+
+pub fn decode_stream_two_values_test() {
+  let assert Ok(d1) = pack(Integer(42))
+  let assert Ok(d2) = pack(String("hello"))
+  let stream = <<d1:bits, d2:bits>>
+
+  let assert Ok(#(v1, rest)) = unpack(stream)
+  v1 |> expect.to_equal(Integer(42))
+  let assert Ok(#(v2, remaining)) = unpack(rest)
+  v2 |> expect.to_equal(String("hello"))
+  remaining |> expect.to_equal(<<>>)
+}
+
+pub fn decode_stream_three_values_test() {
+  let assert Ok(d1) = pack(Nil)
+  let assert Ok(d2) = pack(Boolean(True))
+  let assert Ok(d3) = pack(Integer(100))
+  let stream = <<d1:bits, d2:bits, d3:bits>>
+
+  let assert Ok(#(v1, rest1)) = unpack(stream)
+  v1 |> expect.to_equal(Nil)
+  let assert Ok(#(v2, rest2)) = unpack(rest1)
+  v2 |> expect.to_equal(Boolean(True))
+  let assert Ok(#(v3, rest3)) = unpack(rest2)
+  v3 |> expect.to_equal(Integer(100))
+  rest3 |> expect.to_equal(<<>>)
+}
+
+// ============================================================================
+// Decode Error Path Tests
+// ============================================================================
+
+pub fn decode_invalid_utf8_test() {
+  // fixstr of 2 bytes with invalid UTF-8
+  unpack(<<0xa2, 0xff, 0xfe>>)
+  |> expect.to_equal(Error(error.InvalidUtf8))
+}
+
+pub fn decode_reserved_format_test() {
+  unpack(<<0xc1>>)
+  |> expect.to_equal(Error(error.ReservedFormat(0xc1)))
+}
+
+pub fn decode_trailing_bytes_test() {
+  unpack_exact(<<0xc0, 0xc0>>)
+  |> expect.to_equal(Error(error.TrailingBytes(1)))
+}
+
+// ============================================================================
+// Encode Error Path Tests
+// ============================================================================
+
+pub fn encode_integer_too_large_positive_test() {
+  let too_big = 18_446_744_073_709_551_616
+  pack(value.Integer(too_big))
+  |> expect.to_equal(Error(error.IntegerTooLarge(too_big)))
+}
+
+pub fn encode_integer_too_negative_test() {
+  let too_small = -9_223_372_036_854_775_809
+  pack(value.Integer(too_small))
+  |> expect.to_equal(Error(error.IntegerTooLarge(too_small)))
+}
+
+pub fn encode_invalid_extension_type_code_positive_test() {
+  pack(value.Extension(128, <<0x01>>))
+  |> expect.to_equal(Error(error.InvalidExtensionTypeCode(128)))
+}
+
+pub fn encode_invalid_extension_type_code_negative_test() {
+  pack(value.Extension(-129, <<0x01>>))
+  |> expect.to_equal(Error(error.InvalidExtensionTypeCode(-129)))
+}
+
+// ============================================================================
+// Timestamp Edge Case Tests
+// ============================================================================
+
+pub fn timestamp_max_nanoseconds_test() {
+  let ts = timestamp.Timestamp(1, 999_999_999)
+  let v = timestamp.encode(ts)
+  let assert Ok(data) = pack(v)
+  let assert Ok(decoded_v) = unpack_exact(data)
+  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  decoded |> expect.to_equal(ts)
+}
+
+pub fn timestamp_year_2514_boundary_64bit_test() {
+  let ts = timestamp.Timestamp(17_179_869_183, 0)
+  let v = timestamp.encode(ts)
+  let assert Ok(data) = pack(v)
+  let assert <<0xd7, _:bits>> = data
+  let assert Ok(decoded_v) = unpack_exact(data)
+  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  decoded |> expect.to_equal(ts)
+}
+
+pub fn timestamp_year_2514_boundary_96bit_test() {
+  let ts = timestamp.Timestamp(17_179_869_184, 0)
+  let v = timestamp.encode(ts)
+  let assert Ok(data) = pack(v)
+  let assert <<0xc7, 12, _:bits>> = data
+  let assert Ok(decoded_v) = unpack_exact(data)
+  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  decoded |> expect.to_equal(ts)
+}
+
+pub fn timestamp_decode_wrong_extension_type_test() {
+  timestamp.decode(value.Extension(5, <<0, 0, 0, 0>>))
+  |> expect.to_equal(Error(timestamp.WrongExtensionType(-1, 5)))
+}
+
+pub fn timestamp_decode_non_extension_test() {
+  timestamp.decode(value.Integer(42))
+  |> expect.to_equal(Error(timestamp.NotAnExtension("Integer")))
+}
+
+pub fn timestamp_decode_invalid_data_length_test() {
+  timestamp.decode(value.Extension(-1, <<0, 0, 0, 0, 0, 0>>))
+  |> expect.to_equal(Error(timestamp.InvalidTimestampData(6)))
+}
+
+pub fn format_timestamp_error_not_extension_test() {
+  timestamp.format_timestamp_error(timestamp.NotAnExtension("Integer"))
+  |> expect.to_equal("Expected Extension value, got Integer")
+}
+
+pub fn format_timestamp_error_wrong_type_test() {
+  timestamp.format_timestamp_error(timestamp.WrongExtensionType(-1, 5))
+  |> expect.to_equal("Expected extension type -1, got 5")
+}
+
+pub fn format_timestamp_error_invalid_data_test() {
+  timestamp.format_timestamp_error(timestamp.InvalidTimestampData(6))
+  |> expect.to_equal(
+    "Invalid timestamp data length: 6 bytes (expected 4, 8, or 12)",
+  )
+}
+
+pub fn millis_roundtrip_positive_test() {
+  let ts = timestamp.from_unix_millis(1500)
+  timestamp.to_unix_millis(ts) |> expect.to_equal(1500)
+}
+
+pub fn millis_roundtrip_zero_test() {
+  let ts = timestamp.from_unix_millis(0)
+  timestamp.to_unix_millis(ts) |> expect.to_equal(0)
+  ts |> expect.to_equal(timestamp.Timestamp(0, 0))
+}
+
+pub fn is_timestamp_true_test() {
+  let v = timestamp.encode(timestamp.Timestamp(0, 0))
+  timestamp.is_timestamp(v) |> expect.to_equal(True)
+}
+
+pub fn is_timestamp_false_test() {
+  timestamp.is_timestamp(value.Integer(42)) |> expect.to_equal(False)
+}
+
+pub fn is_timestamp_wrong_ext_test() {
+  timestamp.is_timestamp(value.Extension(5, <<>>)) |> expect.to_equal(False)
+}
+
+pub fn format_encode_error_integer_too_large_test() {
+  error.format_encode_error(error.IntegerTooLarge(999))
+  |> expect.to_equal("Integer too large for MessagePack: 999")
+}
+
+pub fn format_encode_error_string_too_long_test() {
+  error.format_encode_error(error.StringTooLong(5_000_000_000))
+  |> expect.to_equal("String too long: 5000000000 bytes (max 4294967295)")
+}
+
+pub fn format_encode_error_invalid_ext_type_test() {
+  error.format_encode_error(error.InvalidExtensionTypeCode(200))
+  |> expect.to_equal("Invalid extension type code: 200 (must be -128 to 127)")
+}
+
+pub fn format_decode_error_unexpected_eof_test() {
+  error.format_decode_error(error.UnexpectedEof)
+  |> expect.to_equal("Unexpected end of input")
+}
+
+pub fn format_decode_error_invalid_format_test() {
+  error.format_decode_error(error.InvalidFormat(0xc1))
+  |> expect.to_equal("Invalid format byte: 193")
+}
+
+pub fn format_decode_error_invalid_utf8_test() {
+  error.format_decode_error(error.InvalidUtf8)
+  |> expect.to_equal("Invalid UTF-8 in string")
+}
+
+pub fn format_decode_error_trailing_bytes_test() {
+  error.format_decode_error(error.TrailingBytes(5))
+  |> expect.to_equal("Unexpected trailing bytes: 5 bytes remaining")
+}
+
+pub fn format_decode_error_unsupported_float_test() {
+  error.format_decode_error(error.UnsupportedFloat)
+  |> expect.to_equal("Unsupported float value (NaN or Infinity)")
 }

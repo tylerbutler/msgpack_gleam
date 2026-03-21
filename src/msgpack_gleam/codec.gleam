@@ -14,9 +14,9 @@
 ///
 /// pub fn person_codec() -> Codec(Person) {
 ///   codec.object2(
-///     Person,
-///     codec.field("name", codec.string(), fn(p) { p.name }),
-///     codec.field("age", codec.int(), fn(p) { p.age }),
+///     constructor: Person,
+///     field1: codec.field("name", codec.string(), fn(p) { p.name }),
+///     field2: codec.field("age", codec.int(), fn(p) { p.age }),
 ///   )
 /// }
 /// ```
@@ -33,20 +33,23 @@ import msgpack_gleam/value.{type Value}
 // ============================================================================
 
 /// A bidirectional codec that can both encode and decode values of type `a`.
-pub type Codec(a) {
-  Codec(encoder: fn(a) -> Value, decoder: fn(Value) -> Result(a, DecodeError))
+pub opaque type Codec(a) {
+  Codec(
+    encoder: fn(a) -> Value,
+    decoder: fn(Value) -> Result(a, CodecDecodeError),
+  )
 }
 
 /// Errors that can occur during decoding.
-pub type DecodeError {
+pub type CodecDecodeError {
   /// Expected a different type
   TypeMismatch(expected: String, got: String)
   /// Missing required field in map
   MissingField(field: String)
   /// Field exists but failed to decode
-  FieldError(field: String, inner: DecodeError)
+  FieldError(field: String, inner: CodecDecodeError)
   /// Array element failed to decode
-  IndexError(index: Int, inner: DecodeError)
+  IndexError(index: Int, inner: CodecDecodeError)
   /// Extension type code mismatch
   ExtensionTypeMismatch(expected: Int, got: Int)
   /// Value out of expected range
@@ -54,12 +57,12 @@ pub type DecodeError {
   /// Custom error message
   CustomError(message: String)
   /// Multiple errors collected
-  AllFailed(errors: List(DecodeError))
+  AllFailed(errors: List(CodecDecodeError))
 }
 
 /// A field definition for object codecs.
 /// Contains the field name, its codec, and an accessor function.
-pub type Field(record, field_type) {
+pub opaque type Field(record, field_type) {
   Field(
     name: String,
     codec: Codec(field_type),
@@ -77,14 +80,14 @@ pub fn encode(codec: Codec(a), val: a) -> Value {
 }
 
 /// Decode a value using a codec.
-pub fn decode(codec: Codec(a), val: Value) -> Result(a, DecodeError) {
+pub fn decode(codec: Codec(a), val: Value) -> Result(a, CodecDecodeError) {
   codec.decoder(val)
 }
 
 /// Create a custom codec from encoder and decoder functions.
 pub fn custom(
   encoder: fn(a) -> Value,
-  decoder: fn(Value) -> Result(a, DecodeError),
+  decoder: fn(Value) -> Result(a, CodecDecodeError),
 ) -> Codec(a) {
   Codec(encoder:, decoder:)
 }
@@ -98,7 +101,7 @@ pub fn bool() -> Codec(Bool) {
   Codec(encoder: fn(b) { value.Boolean(b) }, decoder: fn(v) {
     case v {
       value.Boolean(b) -> Ok(b)
-      other -> Error(TypeMismatch("Boolean", value_type_name(other)))
+      other -> Error(TypeMismatch("Boolean", value.type_name(other)))
     }
   })
 }
@@ -108,7 +111,7 @@ pub fn int() -> Codec(Int) {
   Codec(encoder: fn(i) { value.Integer(i) }, decoder: fn(v) {
     case v {
       value.Integer(i) -> Ok(i)
-      other -> Error(TypeMismatch("Integer", value_type_name(other)))
+      other -> Error(TypeMismatch("Integer", value.type_name(other)))
     }
   })
 }
@@ -120,7 +123,7 @@ pub fn float() -> Codec(Float) {
     case v {
       value.Float(f) -> Ok(f)
       value.Integer(i) -> Ok(int.to_float(i))
-      other -> Error(TypeMismatch("Float", value_type_name(other)))
+      other -> Error(TypeMismatch("Float", value.type_name(other)))
     }
   })
 }
@@ -131,7 +134,7 @@ pub fn float_strict() -> Codec(Float) {
   Codec(encoder: fn(f) { value.Float(f) }, decoder: fn(v) {
     case v {
       value.Float(f) -> Ok(f)
-      other -> Error(TypeMismatch("Float", value_type_name(other)))
+      other -> Error(TypeMismatch("Float", value.type_name(other)))
     }
   })
 }
@@ -141,7 +144,7 @@ pub fn string() -> Codec(String) {
   Codec(encoder: fn(s) { value.String(s) }, decoder: fn(v) {
     case v {
       value.String(s) -> Ok(s)
-      other -> Error(TypeMismatch("String", value_type_name(other)))
+      other -> Error(TypeMismatch("String", value.type_name(other)))
     }
   })
 }
@@ -151,7 +154,7 @@ pub fn binary() -> Codec(BitArray) {
   Codec(encoder: fn(b) { value.Binary(b) }, decoder: fn(v) {
     case v {
       value.Binary(b) -> Ok(b)
-      other -> Error(TypeMismatch("Binary", value_type_name(other)))
+      other -> Error(TypeMismatch("Binary", value.type_name(other)))
     }
   })
 }
@@ -196,7 +199,7 @@ pub fn list(item: Codec(a)) -> Codec(List(a)) {
     decoder: fn(v) {
       case v {
         value.Array(items) -> decode_list_items(items, item.decoder, 0, [])
-        other -> Error(TypeMismatch("Array", value_type_name(other)))
+        other -> Error(TypeMismatch("Array", value.type_name(other)))
       }
     },
   )
@@ -204,10 +207,10 @@ pub fn list(item: Codec(a)) -> Codec(List(a)) {
 
 fn decode_list_items(
   items: List(Value),
-  decoder: fn(Value) -> Result(a, DecodeError),
+  decoder: fn(Value) -> Result(a, CodecDecodeError),
   index: Int,
   acc: List(a),
-) -> Result(List(a), DecodeError) {
+) -> Result(List(a), CodecDecodeError) {
   case items {
     [] -> Ok(list.reverse(acc))
     [head, ..tail] ->
@@ -234,7 +237,7 @@ pub fn string_dict(value_codec: Codec(v)) -> Codec(Dict(String, v)) {
       case v {
         value.Map(pairs) ->
           decode_string_dict_pairs(pairs, value_codec.decoder, dict.new())
-        other -> Error(TypeMismatch("Map", value_type_name(other)))
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
       }
     },
   )
@@ -242,9 +245,9 @@ pub fn string_dict(value_codec: Codec(v)) -> Codec(Dict(String, v)) {
 
 fn decode_string_dict_pairs(
   pairs: List(#(Value, Value)),
-  value_decoder: fn(Value) -> Result(v, DecodeError),
+  value_decoder: fn(Value) -> Result(v, CodecDecodeError),
   acc: Dict(String, v),
-) -> Result(Dict(String, v), DecodeError) {
+) -> Result(Dict(String, v), CodecDecodeError) {
   case pairs {
     [] -> Ok(acc)
     [#(key, val), ..rest] ->
@@ -259,7 +262,7 @@ fn decode_string_dict_pairs(
               )
             Error(e) -> Error(FieldError(k, e))
           }
-        other -> Error(TypeMismatch("String key", value_type_name(other)))
+        other -> Error(TypeMismatch("String key", value.type_name(other)))
       }
   }
 }
@@ -284,7 +287,7 @@ pub fn dict(key_codec: Codec(k), value_codec: Codec(v)) -> Codec(Dict(k, v)) {
             value_codec.decoder,
             dict.new(),
           )
-        other -> Error(TypeMismatch("Map", value_type_name(other)))
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
       }
     },
   )
@@ -292,10 +295,10 @@ pub fn dict(key_codec: Codec(k), value_codec: Codec(v)) -> Codec(Dict(k, v)) {
 
 fn decode_dict_pairs(
   pairs: List(#(Value, Value)),
-  key_decoder: fn(Value) -> Result(k, DecodeError),
-  value_decoder: fn(Value) -> Result(v, DecodeError),
+  key_decoder: fn(Value) -> Result(k, CodecDecodeError),
+  value_decoder: fn(Value) -> Result(v, CodecDecodeError),
   acc: Dict(k, v),
-) -> Result(Dict(k, v), DecodeError) {
+) -> Result(Dict(k, v), CodecDecodeError) {
   case pairs {
     [] -> Ok(acc)
     [#(key, val), ..rest] ->
@@ -321,7 +324,7 @@ pub fn extension(type_code: Int) -> Codec(BitArray) {
     case v {
       value.Extension(tc, data) if tc == type_code -> Ok(data)
       value.Extension(tc, _) -> Error(ExtensionTypeMismatch(type_code, tc))
-      other -> Error(TypeMismatch("Extension", value_type_name(other)))
+      other -> Error(TypeMismatch("Extension", value.type_name(other)))
     }
   })
 }
@@ -333,7 +336,7 @@ pub fn any_extension() -> Codec(#(Int, BitArray)) {
     decoder: fn(v) {
       case v {
         value.Extension(tc, data) -> Ok(#(tc, data))
-        other -> Error(TypeMismatch("Extension", value_type_name(other)))
+        other -> Error(TypeMismatch("Extension", value.type_name(other)))
       }
     },
   )
@@ -358,8 +361,8 @@ pub fn field(
 
 /// Codec for objects with 1 field.
 pub fn object1(
-  constructor: fn(a) -> record,
-  field1: Field(record, a),
+  constructor constructor: fn(a) -> record,
+  field1 field1: Field(record, a),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -379,9 +382,9 @@ pub fn object1(
 
 /// Codec for objects with 2 fields.
 pub fn object2(
-  constructor: fn(a, b) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
+  constructor constructor: fn(a, b) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -406,10 +409,10 @@ pub fn object2(
 
 /// Codec for objects with 3 fields.
 pub fn object3(
-  constructor: fn(a, b, c) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
+  constructor constructor: fn(a, b, c) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -439,11 +442,11 @@ pub fn object3(
 
 /// Codec for objects with 4 fields.
 pub fn object4(
-  constructor: fn(a, b, c, d) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
-  field4: Field(record, d),
+  constructor constructor: fn(a, b, c, d) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
+  field4 field4: Field(record, d),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -478,12 +481,12 @@ pub fn object4(
 
 /// Codec for objects with 5 fields.
 pub fn object5(
-  constructor: fn(a, b, c, d, e) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
-  field4: Field(record, d),
-  field5: Field(record, e),
+  constructor constructor: fn(a, b, c, d, e) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
+  field4 field4: Field(record, d),
+  field5 field5: Field(record, e),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -523,13 +526,13 @@ pub fn object5(
 
 /// Codec for objects with 6 fields.
 pub fn object6(
-  constructor: fn(a, b, c, d, e, f) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
-  field4: Field(record, d),
-  field5: Field(record, e),
-  field6: Field(record, f),
+  constructor constructor: fn(a, b, c, d, e, f) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
+  field4 field4: Field(record, d),
+  field5 field5: Field(record, e),
+  field6 field6: Field(record, f),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -574,14 +577,14 @@ pub fn object6(
 
 /// Codec for objects with 7 fields.
 pub fn object7(
-  constructor: fn(a, b, c, d, e, f, g) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
-  field4: Field(record, d),
-  field5: Field(record, e),
-  field6: Field(record, f),
-  field7: Field(record, g),
+  constructor constructor: fn(a, b, c, d, e, f, g) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
+  field4 field4: Field(record, d),
+  field5 field5: Field(record, e),
+  field6 field6: Field(record, f),
+  field7 field7: Field(record, g),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -631,15 +634,15 @@ pub fn object7(
 
 /// Codec for objects with 8 fields.
 pub fn object8(
-  constructor: fn(a, b, c, d, e, f, g, h) -> record,
-  field1: Field(record, a),
-  field2: Field(record, b),
-  field3: Field(record, c),
-  field4: Field(record, d),
-  field5: Field(record, e),
-  field6: Field(record, f),
-  field7: Field(record, g),
-  field8: Field(record, h),
+  constructor constructor: fn(a, b, c, d, e, f, g, h) -> record,
+  field1 field1: Field(record, a),
+  field2 field2: Field(record, b),
+  field3 field3: Field(record, c),
+  field4 field4: Field(record, d),
+  field5 field5: Field(record, e),
+  field6 field6: Field(record, f),
+  field7 field7: Field(record, g),
+  field8 field8: Field(record, h),
 ) -> Codec(record) {
   Codec(
     encoder: fn(record) {
@@ -711,15 +714,18 @@ pub fn map(
 pub fn try_map(
   codec: Codec(a),
   encode_map: fn(b) -> a,
-  decode_map: fn(a) -> Result(b, DecodeError),
+  decode_map: fn(a) -> Result(b, CodecDecodeError),
 ) -> Codec(b) {
   Codec(encoder: fn(b) { codec.encoder(encode_map(b)) }, decoder: fn(v) {
     result.try(codec.decoder(v), decode_map)
   })
 }
 
-/// Try multiple codecs in order, using the first that succeeds for decoding.
-/// Encoding uses the first codec.
+/// Tries multiple codecs in order during decoding, returning the first success.
+/// 
+/// **Note:** Encoding always uses the first codec's encoder. For tagged unions
+/// where different variants need different encoders, consider building a custom
+/// codec with `custom` instead.
 pub fn one_of(codecs: List(Codec(a))) -> Codec(a) {
   case codecs {
     [] ->
@@ -736,8 +742,8 @@ pub fn one_of(codecs: List(Codec(a))) -> Codec(a) {
 fn try_codecs(
   v: Value,
   codecs: List(Codec(a)),
-  errors: List(DecodeError),
-) -> Result(a, DecodeError) {
+  errors: List(CodecDecodeError),
+) -> Result(a, CodecDecodeError) {
   case codecs {
     [] -> Error(AllFailed(list.reverse(errors)))
     [codec, ..rest] ->
@@ -748,13 +754,18 @@ fn try_codecs(
   }
 }
 
-/// Create a codec that always succeeds with a constant value when decoding.
-/// Useful for default values or variant tags.
+/// Creates a codec that always decodes to the given value, regardless of input.
+/// 
+/// **Note:** The encoder produces `Nil`. This codec is primarily useful on the
+/// decode side (e.g., for default values or constant fields).
 pub fn succeed(val: a) -> Codec(a) {
   Codec(encoder: fn(_) { value.Nil }, decoder: fn(_) { Ok(val) })
 }
 
-/// Create a codec that always fails with the given error.
+/// Creates a codec that always fails to decode with the given error message.
+/// 
+/// **Note:** The encoder produces `Nil`. This codec is primarily useful as a
+/// fallback in `one_of` chains to provide better error messages.
 pub fn fail(error: String) -> Codec(a) {
   Codec(encoder: fn(_) { value.Nil }, decoder: fn(_) {
     Error(CustomError(error))
@@ -800,7 +811,7 @@ pub fn tuple2(codec1: Codec(a), codec2: Codec(b)) -> Codec(#(a, b)) {
             "Expected array of 2 elements, got "
             <> int.to_string(list.length(items)),
           ))
-        other -> Error(TypeMismatch("Array", value_type_name(other)))
+        other -> Error(TypeMismatch("Array", value.type_name(other)))
       }
     },
   )
@@ -833,7 +844,7 @@ pub fn tuple3(
             "Expected array of 3 elements, got "
             <> int.to_string(list.length(items)),
           ))
-        other -> Error(TypeMismatch("Array", value_type_name(other)))
+        other -> Error(TypeMismatch("Array", value.type_name(other)))
       }
     },
   )
@@ -869,7 +880,7 @@ pub fn tuple4(
             "Expected array of 4 elements, got "
             <> int.to_string(list.length(items)),
           ))
-        other -> Error(TypeMismatch("Array", value_type_name(other)))
+        other -> Error(TypeMismatch("Array", value.type_name(other)))
       }
     },
   )
@@ -894,7 +905,7 @@ pub fn int_range(min: Int, max: Int) -> Codec(Int) {
           <> int.to_string(max)
           <> "]",
         ))
-      other -> Error(TypeMismatch("Integer", value_type_name(other)))
+      other -> Error(TypeMismatch("Integer", value.type_name(other)))
     }
   })
 }
@@ -905,30 +916,30 @@ pub fn non_empty_string() -> Codec(String) {
     case v {
       value.String(s) if s != "" -> Ok(s)
       value.String(_) -> Error(OutOfRange("String must not be empty"))
-      other -> Error(TypeMismatch("String", value_type_name(other)))
+      other -> Error(TypeMismatch("String", value.type_name(other)))
     }
   })
 }
 
 /// Codec for non-empty lists.
 pub fn non_empty_list(item: Codec(a)) -> Codec(List(a)) {
-  Codec(
-    encoder: fn(items) { value.Array(list.map(items, item.encoder)) },
-    decoder: fn(v) {
-      case v {
-        value.Array([]) -> Error(OutOfRange("List must not be empty"))
-        value.Array(items) -> decode_list_items(items, item.decoder, 0, [])
-        other -> Error(TypeMismatch("Array", value_type_name(other)))
-      }
-    },
-  )
+  list(item)
+  |> try_map(fn(items) { items }, fn(items) {
+    case items {
+      [] -> Error(OutOfRange("List must not be empty"))
+      _ -> Ok(items)
+    }
+  })
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-fn decode_field(v: Value, field_def: Field(record, a)) -> Result(a, DecodeError) {
+fn decode_field(
+  v: Value,
+  field_def: Field(record, a),
+) -> Result(a, CodecDecodeError) {
   case v {
     value.Map(pairs) ->
       case find_field_in_pairs(pairs, field_def.name) {
@@ -939,14 +950,25 @@ fn decode_field(v: Value, field_def: Field(record, a)) -> Result(a, DecodeError)
           }
         Error(_) -> Error(MissingField(field_def.name))
       }
-    other -> Error(TypeMismatch("Map", value_type_name(other)))
+    other -> Error(TypeMismatch("Map", value.type_name(other)))
   }
+}
+
+/// A codec for the MessagePack Nil type.
+/// Encodes Gleam's `Nil` as MessagePack Nil and decodes MessagePack Nil to `Nil`.
+pub fn nil() -> Codec(Nil) {
+  Codec(encoder: fn(_) { value.Nil }, decoder: fn(v) {
+    case v {
+      value.Nil -> Ok(Nil)
+      other -> Error(TypeMismatch("Nil", value.type_name(other)))
+    }
+  })
 }
 
 fn find_field_in_pairs(
   pairs: List(#(Value, Value)),
   name: String,
-) -> Result(Value, DecodeError) {
+) -> Result(Value, CodecDecodeError) {
   case pairs {
     [] -> Error(MissingField(name))
     [#(value.String(key), val), ..rest] ->
@@ -959,26 +981,12 @@ fn find_field_in_pairs(
 }
 
 fn map_index_error(
-  res: Result(a, DecodeError),
+  res: Result(a, CodecDecodeError),
   index: Int,
-) -> Result(a, DecodeError) {
+) -> Result(a, CodecDecodeError) {
   case res {
     Ok(a) -> Ok(a)
     Error(e) -> Error(IndexError(index, e))
-  }
-}
-
-fn value_type_name(v: Value) -> String {
-  case v {
-    value.Nil -> "Nil"
-    value.Boolean(_) -> "Boolean"
-    value.Integer(_) -> "Integer"
-    value.Float(_) -> "Float"
-    value.String(_) -> "String"
-    value.Binary(_) -> "Binary"
-    value.Array(_) -> "Array"
-    value.Map(_) -> "Map"
-    value.Extension(_, _) -> "Extension"
   }
 }
 
@@ -987,11 +995,11 @@ fn value_type_name(v: Value) -> String {
 // ============================================================================
 
 /// Format a decode error as a human-readable string.
-pub fn format_error(error: DecodeError) -> String {
+pub fn format_error(error: CodecDecodeError) -> String {
   format_error_inner(error, "")
 }
 
-fn format_error_inner(error: DecodeError, path: String) -> String {
+fn format_error_inner(error: CodecDecodeError, path: String) -> String {
   case error {
     TypeMismatch(expected, got) ->
       path_prefix(path) <> "expected " <> expected <> ", got " <> got
