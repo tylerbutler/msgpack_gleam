@@ -19,6 +19,30 @@
 ///     field2: codec.field("age", codec.int(), fn(p) { p.age }),
 ///   )
 /// }
+///
+/// // Custom codec example
+/// pub type Color {
+///   Red
+///   Blue
+/// }
+///
+/// pub fn color_codec() -> Codec(Color) {
+///   codec.custom(
+///     encoder: fn(c) {
+///       case c {
+///         Red -> value.String("red")
+///         Blue -> value.String("blue")
+///       }
+///     },
+///     decoder: fn(v) {
+///       case v {
+///         value.String("red") -> Ok(Red)
+///         value.String("blue") -> Ok(Blue)
+///         other -> Error(codec.TypeMismatch("String", value.type_name(other)))
+///       }
+///     },
+///   )
+/// }
 /// ```
 import gleam/dict.{type Dict}
 import gleam/int
@@ -374,8 +398,14 @@ pub fn object1(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      Ok(constructor(a))
+      case v {
+        value.Map(pairs) -> {
+          let d = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(d, field1))
+          Ok(constructor(a))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -400,9 +430,15 @@ pub fn object2(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      Ok(constructor(a, b))
+      case v {
+        value.Map(pairs) -> {
+          let d = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(d, field1))
+          use b <- result.try(decode_field_from_dict(d, field2))
+          Ok(constructor(a, b))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -432,10 +468,16 @@ pub fn object3(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      Ok(constructor(a, b, c))
+      case v {
+        value.Map(pairs) -> {
+          let d = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(d, field1))
+          use b <- result.try(decode_field_from_dict(d, field2))
+          use c <- result.try(decode_field_from_dict(d, field3))
+          Ok(constructor(a, b, c))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -470,11 +512,17 @@ pub fn object4(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      use d <- result.try(decode_field(v, field4))
-      Ok(constructor(a, b, c, d))
+      case v {
+        value.Map(pairs) -> {
+          let d = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(d, field1))
+          use b <- result.try(decode_field_from_dict(d, field2))
+          use c <- result.try(decode_field_from_dict(d, field3))
+          use d_val <- result.try(decode_field_from_dict(d, field4))
+          Ok(constructor(a, b, c, d_val))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -514,12 +562,18 @@ pub fn object5(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      use d <- result.try(decode_field(v, field4))
-      use e <- result.try(decode_field(v, field5))
-      Ok(constructor(a, b, c, d, e))
+      case v {
+        value.Map(pairs) -> {
+          let fields = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(fields, field1))
+          use b <- result.try(decode_field_from_dict(fields, field2))
+          use c <- result.try(decode_field_from_dict(fields, field3))
+          use d <- result.try(decode_field_from_dict(fields, field4))
+          use e <- result.try(decode_field_from_dict(fields, field5))
+          Ok(constructor(a, b, c, d, e))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -564,13 +618,19 @@ pub fn object6(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      use d <- result.try(decode_field(v, field4))
-      use e <- result.try(decode_field(v, field5))
-      use f <- result.try(decode_field(v, field6))
-      Ok(constructor(a, b, c, d, e, f))
+      case v {
+        value.Map(pairs) -> {
+          let fields = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(fields, field1))
+          use b <- result.try(decode_field_from_dict(fields, field2))
+          use c <- result.try(decode_field_from_dict(fields, field3))
+          use d <- result.try(decode_field_from_dict(fields, field4))
+          use e <- result.try(decode_field_from_dict(fields, field5))
+          use f <- result.try(decode_field_from_dict(fields, field6))
+          Ok(constructor(a, b, c, d, e, f))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -620,14 +680,20 @@ pub fn object7(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      use d <- result.try(decode_field(v, field4))
-      use e <- result.try(decode_field(v, field5))
-      use f <- result.try(decode_field(v, field6))
-      use g <- result.try(decode_field(v, field7))
-      Ok(constructor(a, b, c, d, e, f, g))
+      case v {
+        value.Map(pairs) -> {
+          let fields = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(fields, field1))
+          use b <- result.try(decode_field_from_dict(fields, field2))
+          use c <- result.try(decode_field_from_dict(fields, field3))
+          use d <- result.try(decode_field_from_dict(fields, field4))
+          use e <- result.try(decode_field_from_dict(fields, field5))
+          use f <- result.try(decode_field_from_dict(fields, field6))
+          use g <- result.try(decode_field_from_dict(fields, field7))
+          Ok(constructor(a, b, c, d, e, f, g))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -682,15 +748,21 @@ pub fn object8(
       ])
     },
     decoder: fn(v) {
-      use a <- result.try(decode_field(v, field1))
-      use b <- result.try(decode_field(v, field2))
-      use c <- result.try(decode_field(v, field3))
-      use d <- result.try(decode_field(v, field4))
-      use e <- result.try(decode_field(v, field5))
-      use f <- result.try(decode_field(v, field6))
-      use g <- result.try(decode_field(v, field7))
-      use h <- result.try(decode_field(v, field8))
-      Ok(constructor(a, b, c, d, e, f, g, h))
+      case v {
+        value.Map(pairs) -> {
+          let fields = pairs_to_dict(pairs)
+          use a <- result.try(decode_field_from_dict(fields, field1))
+          use b <- result.try(decode_field_from_dict(fields, field2))
+          use c <- result.try(decode_field_from_dict(fields, field3))
+          use d <- result.try(decode_field_from_dict(fields, field4))
+          use e <- result.try(decode_field_from_dict(fields, field5))
+          use f <- result.try(decode_field_from_dict(fields, field6))
+          use g <- result.try(decode_field_from_dict(fields, field7))
+          use h <- result.try(decode_field_from_dict(fields, field8))
+          Ok(constructor(a, b, c, d, e, f, g, h))
+        }
+        other -> Error(TypeMismatch("Map", value.type_name(other)))
+      }
     },
   )
 }
@@ -936,21 +1008,26 @@ pub fn non_empty_list(item: Codec(a)) -> Codec(List(a)) {
 // Helper Functions
 // ============================================================================
 
-fn decode_field(
-  v: Value,
+fn pairs_to_dict(pairs: List(#(Value, Value))) -> Dict(String, Value) {
+  list.fold(pairs, dict.new(), fn(acc, pair) {
+    case pair.0 {
+      value.String(k) -> dict.insert(acc, k, pair.1)
+      _ -> acc
+    }
+  })
+}
+
+fn decode_field_from_dict(
+  d: Dict(String, Value),
   field_def: Field(record, a),
 ) -> Result(a, CodecDecodeError) {
-  case v {
-    value.Map(pairs) ->
-      case find_field_in_pairs(pairs, field_def.name) {
-        Ok(field_value) ->
-          case field_def.codec.decoder(field_value) {
-            Ok(a) -> Ok(a)
-            Error(e) -> Error(FieldError(field_def.name, e))
-          }
-        Error(_) -> Error(MissingField(field_def.name))
+  case dict.get(d, field_def.name) {
+    Ok(val) ->
+      case field_def.codec.decoder(val) {
+        Ok(a) -> Ok(a)
+        Error(e) -> Error(FieldError(field_def.name, e))
       }
-    other -> Error(TypeMismatch("Map", value.type_name(other)))
+    Error(_) -> Error(MissingField(field_def.name))
   }
 }
 
@@ -963,21 +1040,6 @@ pub fn nil() -> Codec(Nil) {
       other -> Error(TypeMismatch("Nil", value.type_name(other)))
     }
   })
-}
-
-fn find_field_in_pairs(
-  pairs: List(#(Value, Value)),
-  name: String,
-) -> Result(Value, CodecDecodeError) {
-  case pairs {
-    [] -> Error(MissingField(name))
-    [#(value.String(key), val), ..rest] ->
-      case key == name {
-        True -> Ok(val)
-        False -> find_field_in_pairs(rest, name)
-      }
-    [_, ..rest] -> find_field_in_pairs(rest, name)
-  }
 }
 
 fn map_index_error(

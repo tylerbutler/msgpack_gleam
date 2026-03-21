@@ -4,6 +4,12 @@ import gleam/result
 import msgpack_gleam/error.{type DecodeError}
 import msgpack_gleam/value.{type Value}
 
+const max_string_bytes = 134_217_728 // 128 MB
+
+const max_binary_bytes = 134_217_728 // 128 MB
+
+const max_collection_elements = 4_194_304 // 4 million elements
+
 /// Decode MessagePack binary data to a Value.
 /// Returns the decoded value and any remaining bytes.
 pub fn decode(data: BitArray) -> Result(#(Value, BitArray), DecodeError) {
@@ -217,15 +223,20 @@ fn decode_string(
   data: BitArray,
   len: Int,
 ) -> Result(#(Value, BitArray), DecodeError) {
-  let bits_len = len * 8
-  case data {
-    <<str_bytes:bits-size(bits_len), rest:bits>> -> {
-      case bit_array.to_string(<<str_bytes:bits>>) {
-        Ok(s) -> Ok(#(value.String(s), rest))
-        Error(_) -> Error(error.InvalidUtf8)
+  case len > max_string_bytes {
+    True -> Error(error.PayloadTooLarge(len))
+    False -> {
+      let bits_len = len * 8
+      case data {
+        <<str_bytes:bits-size(bits_len), rest:bits>> -> {
+          case bit_array.to_string(str_bytes) {
+            Ok(s) -> Ok(#(value.String(s), rest))
+            Error(_) -> Error(error.InvalidUtf8)
+          }
+        }
+        _ -> Error(error.UnexpectedEof)
       }
     }
-    _ -> Error(error.UnexpectedEof)
   }
 }
 
@@ -237,11 +248,16 @@ fn decode_binary(
   data: BitArray,
   len: Int,
 ) -> Result(#(Value, BitArray), DecodeError) {
-  let bits_len = len * 8
-  case data {
-    <<bin_bytes:bits-size(bits_len), rest:bits>> ->
-      Ok(#(value.Binary(<<bin_bytes:bits>>), rest))
-    _ -> Error(error.UnexpectedEof)
+  case len > max_binary_bytes {
+    True -> Error(error.PayloadTooLarge(len))
+    False -> {
+      let bits_len = len * 8
+      case data {
+        <<bin_bytes:bits-size(bits_len), rest:bits>> ->
+          Ok(#(value.Binary(<<bin_bytes:bits>>), rest))
+        _ -> Error(error.UnexpectedEof)
+      }
+    }
   }
 }
 
@@ -253,7 +269,10 @@ fn decode_array(
   data: BitArray,
   len: Int,
 ) -> Result(#(Value, BitArray), DecodeError) {
-  decode_array_items(data, len, [])
+  case len > max_collection_elements {
+    True -> Error(error.PayloadTooLarge(len))
+    False -> decode_array_items(data, len, [])
+  }
 }
 
 fn decode_array_items(
@@ -278,7 +297,10 @@ fn decode_map(
   data: BitArray,
   len: Int,
 ) -> Result(#(Value, BitArray), DecodeError) {
-  decode_map_pairs(data, len, [])
+  case len > max_collection_elements {
+    True -> Error(error.PayloadTooLarge(len))
+    False -> decode_map_pairs(data, len, [])
+  }
 }
 
 fn decode_map_pairs(
@@ -305,14 +327,19 @@ fn decode_extension(
   len: Int,
   type_code: Int,
 ) -> Result(#(Value, BitArray), DecodeError) {
-  let bits_len = len * 8
-  case data {
-    <<ext_bytes:bits-size(bits_len), rest:bits>> ->
-      Ok(#(
-        value.Extension(signed_type_code(type_code), <<ext_bytes:bits>>),
-        rest,
-      ))
-    _ -> Error(error.UnexpectedEof)
+  case len > max_binary_bytes {
+    True -> Error(error.PayloadTooLarge(len))
+    False -> {
+      let bits_len = len * 8
+      case data {
+        <<ext_bytes:bits-size(bits_len), rest:bits>> ->
+          Ok(#(
+            value.Extension(signed_type_code(type_code), <<ext_bytes:bits>>),
+            rest,
+          ))
+        _ -> Error(error.UnexpectedEof)
+      }
+    }
   }
 }
 

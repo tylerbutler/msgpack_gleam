@@ -34,6 +34,8 @@ pub type DecodeError {
   TrailingBytes(Int)
   /// Float value is NaN or Infinity, which BEAM cannot represent
   UnsupportedFloat
+  /// Payload exceeds maximum allowed size or depth
+  PayloadTooLarge(Int)
 }
 
 /// Format an encode error as a human-readable string.
@@ -71,5 +73,7 @@ pub fn format_decode_error(error: DecodeError) -> String {
     TrailingBytes(n) ->
       "Unexpected trailing bytes: " <> int.to_string(n) <> " bytes remaining"
     UnsupportedFloat -> "Unsupported float value (NaN or Infinity)"
+    PayloadTooLarge(n) ->
+      "Payload too large: " <> int.to_string(n) <> " bytes or elements"
   }
 }

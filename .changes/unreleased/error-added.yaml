@@ -1,0 +1,2 @@
+kind: Added
+body: Add `PayloadTooLarge` error variant to `DecodeError`.
