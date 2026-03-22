@@ -4,11 +4,17 @@ import gleam/result
 import msgpack_gleam/error.{type DecodeError}
 import msgpack_gleam/value.{type Value}
 
-const max_string_bytes = 134_217_728 // 128 MB
+const max_string_bytes = 134_217_728
 
-const max_binary_bytes = 134_217_728 // 128 MB
+// 128 MB
 
-const max_collection_elements = 4_194_304 // 4 million elements
+const max_binary_bytes = 134_217_728
+
+// 128 MB
+
+const max_collection_elements = 4_194_304
+
+// 4 million elements
 
 /// Decode MessagePack binary data to a Value.
 /// Returns the decoded value and any remaining bytes.
