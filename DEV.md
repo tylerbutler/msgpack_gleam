@@ -50,6 +50,9 @@ just format
 ### Before Committing
 
 ```bash
+# Create a changelog entry (for user-facing changes)
+just change
+
 # Run full CI checks
 just pr
 ```
@@ -86,9 +89,13 @@ just main
 │   ├── test_helpers.gleam
 │   └── test_data/
 │       └── msgpack-test-suite.json
+├── .changes/                      # Changie changelog fragments
+│   ├── header.md
+│   └── unreleased/
 ├── .github/
 │   ├── actions/setup/             # Reusable CI setup
 │   └── workflows/
+├── .changie.yaml                  # Changie configuration
 ├── gleam.toml
 └── justfile
 ```
@@ -159,12 +166,13 @@ pub fn roundtrip_test() {
 ### Writing Tests
 
 ```gleam
-import gleeunit/should
 import msgpack_gleam
+import msgpack_gleam/value.{Nil}
+import startest/expect
 
 pub fn encode_nil_test() {
-  msgpack_gleam.pack(msgpack_gleam.Nil)
-  |> should.equal(Ok(<<0xc0>>))
+  msgpack_gleam.pack(Nil)
+  |> expect.to_equal(Ok(<<0xc0>>))
 }
 ```
 
@@ -178,6 +186,23 @@ fix(decode): handle trailing bytes correctly
 perf(encode): optimize integer encoding
 test: add edge case tests for timestamps
 ```
+
+## Changelog
+
+This project uses [changie](https://changie.dev/) for changelog management.
+
+```bash
+# Create a new changelog entry (interactive)
+just change
+
+# Preview unreleased changelog
+just changelog-preview
+
+# Generate CHANGELOG.md (typically done by CI)
+just changelog
+```
+
+Change entries are stored as YAML fragments in `.changes/unreleased/` and batched into versioned releases automatically by the CI pipeline.
 
 ## Codegen Subproject
 

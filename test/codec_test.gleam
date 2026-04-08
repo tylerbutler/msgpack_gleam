@@ -3,10 +3,10 @@ import gleam/int
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
-import gleeunit/should
 import msgpack_gleam
 import msgpack_gleam/codec.{type Codec}
 import msgpack_gleam/value
+import startest/expect
 
 // ============================================================================
 // Test Types
@@ -38,21 +38,21 @@ pub fn bool_codec_test() {
 
   // Encode
   codec.encode(c, True)
-  |> should.equal(value.Boolean(True))
+  |> expect.to_equal(value.Boolean(True))
 
   codec.encode(c, False)
-  |> should.equal(value.Boolean(False))
+  |> expect.to_equal(value.Boolean(False))
 
   // Decode
   codec.decode(c, value.Boolean(True))
-  |> should.equal(Ok(True))
+  |> expect.to_equal(Ok(True))
 
   codec.decode(c, value.Boolean(False))
-  |> should.equal(Ok(False))
+  |> expect.to_equal(Ok(False))
 
   // Decode wrong type
-  codec.decode(c, value.Integer(1))
-  |> should.be_error()
+  let _ = codec.decode(c, value.Integer(1)) |> expect.to_be_error()
+  Nil
 }
 
 pub fn int_codec_test() {
@@ -60,18 +60,18 @@ pub fn int_codec_test() {
 
   // Encode
   codec.encode(c, 42)
-  |> should.equal(value.Integer(42))
+  |> expect.to_equal(value.Integer(42))
 
   codec.encode(c, -100)
-  |> should.equal(value.Integer(-100))
+  |> expect.to_equal(value.Integer(-100))
 
   // Decode
   codec.decode(c, value.Integer(42))
-  |> should.equal(Ok(42))
+  |> expect.to_equal(Ok(42))
 
   // Decode wrong type
-  codec.decode(c, value.String("42"))
-  |> should.be_error()
+  let _ = codec.decode(c, value.String("42")) |> expect.to_be_error()
+  Nil
 }
 
 pub fn float_codec_test() {
@@ -79,19 +79,19 @@ pub fn float_codec_test() {
 
   // Encode
   codec.encode(c, 3.14)
-  |> should.equal(value.Float(3.14))
+  |> expect.to_equal(value.Float(3.14))
 
   // Decode
   codec.decode(c, value.Float(3.14))
-  |> should.equal(Ok(3.14))
+  |> expect.to_equal(Ok(3.14))
 
   // Decode integer as float (coercion)
   codec.decode(c, value.Integer(42))
-  |> should.equal(Ok(42.0))
+  |> expect.to_equal(Ok(42.0))
 
   // Decode wrong type
-  codec.decode(c, value.String("3.14"))
-  |> should.be_error()
+  let _ = codec.decode(c, value.String("3.14")) |> expect.to_be_error()
+  Nil
 }
 
 pub fn float_strict_codec_test() {
@@ -99,11 +99,11 @@ pub fn float_strict_codec_test() {
 
   // Decode float
   codec.decode(c, value.Float(3.14))
-  |> should.equal(Ok(3.14))
+  |> expect.to_equal(Ok(3.14))
 
   // Decode integer fails (no coercion)
-  codec.decode(c, value.Integer(42))
-  |> should.be_error()
+  let _ = codec.decode(c, value.Integer(42)) |> expect.to_be_error()
+  Nil
 }
 
 pub fn string_codec_test() {
@@ -111,15 +111,15 @@ pub fn string_codec_test() {
 
   // Encode
   codec.encode(c, "hello")
-  |> should.equal(value.String("hello"))
+  |> expect.to_equal(value.String("hello"))
 
   // Decode
   codec.decode(c, value.String("world"))
-  |> should.equal(Ok("world"))
+  |> expect.to_equal(Ok("world"))
 
   // Decode wrong type
-  codec.decode(c, value.Integer(42))
-  |> should.be_error()
+  let _ = codec.decode(c, value.Integer(42)) |> expect.to_be_error()
+  Nil
 }
 
 pub fn binary_codec_test() {
@@ -127,11 +127,11 @@ pub fn binary_codec_test() {
 
   // Encode
   codec.encode(c, <<1, 2, 3>>)
-  |> should.equal(value.Binary(<<1, 2, 3>>))
+  |> expect.to_equal(value.Binary(<<1, 2, 3>>))
 
   // Decode
   codec.decode(c, value.Binary(<<4, 5, 6>>))
-  |> should.equal(Ok(<<4, 5, 6>>))
+  |> expect.to_equal(Ok(<<4, 5, 6>>))
 }
 
 // ============================================================================
@@ -143,19 +143,19 @@ pub fn nullable_codec_test() {
 
   // Encode Some
   codec.encode(c, Some("hello"))
-  |> should.equal(value.String("hello"))
+  |> expect.to_equal(value.String("hello"))
 
   // Encode None
   codec.encode(c, None)
-  |> should.equal(value.Nil)
+  |> expect.to_equal(value.Nil)
 
   // Decode Some
   codec.decode(c, value.String("hello"))
-  |> should.equal(Ok(Some("hello")))
+  |> expect.to_equal(Ok(Some("hello")))
 
   // Decode None
   codec.decode(c, value.Nil)
-  |> should.equal(Ok(None))
+  |> expect.to_equal(Ok(None))
 }
 
 pub fn list_codec_test() {
@@ -163,21 +163,23 @@ pub fn list_codec_test() {
 
   // Encode
   codec.encode(c, [1, 2, 3])
-  |> should.equal(
+  |> expect.to_equal(
     value.Array([value.Integer(1), value.Integer(2), value.Integer(3)]),
   )
 
   // Decode
   codec.decode(c, value.Array([value.Integer(4), value.Integer(5)]))
-  |> should.equal(Ok([4, 5]))
+  |> expect.to_equal(Ok([4, 5]))
 
   // Decode empty list
   codec.decode(c, value.Array([]))
-  |> should.equal(Ok([]))
+  |> expect.to_equal(Ok([]))
 
   // Decode wrong element type
-  codec.decode(c, value.Array([value.Integer(1), value.String("two")]))
-  |> should.be_error()
+  let _ =
+    codec.decode(c, value.Array([value.Integer(1), value.String("two")]))
+    |> expect.to_be_error()
+  Nil
 }
 
 pub fn string_dict_codec_test() {
@@ -190,9 +192,9 @@ pub fn string_dict_codec_test() {
   // Decode back
   let assert Ok(decoded) = codec.decode(c, encoded)
   dict.get(decoded, "a")
-  |> should.equal(Ok(1))
+  |> expect.to_equal(Ok(1))
   dict.get(decoded, "b")
-  |> should.equal(Ok(2))
+  |> expect.to_equal(Ok(2))
 }
 
 pub fn dict_codec_test() {
@@ -205,9 +207,9 @@ pub fn dict_codec_test() {
   // Decode back
   let assert Ok(decoded) = codec.decode(c, encoded)
   dict.get(decoded, 1)
-  |> should.equal(Ok("one"))
+  |> expect.to_equal(Ok("one"))
   dict.get(decoded, 2)
-  |> should.equal(Ok("two"))
+  |> expect.to_equal(Ok("two"))
 }
 
 // ============================================================================
@@ -229,7 +231,7 @@ pub fn object2_codec_test() {
   // Encode
   let encoded = codec.encode(c, person)
   encoded
-  |> should.equal(
+  |> expect.to_equal(
     value.Map([
       #(value.String("name"), value.String("Alice")),
       #(value.String("age"), value.Integer(30)),
@@ -238,7 +240,7 @@ pub fn object2_codec_test() {
 
   // Decode
   codec.decode(c, encoded)
-  |> should.equal(Ok(person))
+  |> expect.to_equal(Ok(person))
 }
 
 fn user_codec() -> Codec(User) {
@@ -258,13 +260,13 @@ pub fn object4_codec_test() {
   // Round-trip
   let encoded = codec.encode(c, user)
   codec.decode(c, encoded)
-  |> should.equal(Ok(user))
+  |> expect.to_equal(Ok(user))
 
   // With None email
   let user2 = User(2, "Charlie", None, [])
   let encoded2 = codec.encode(c, user2)
   codec.decode(c, encoded2)
-  |> should.equal(Ok(user2))
+  |> expect.to_equal(Ok(user2))
 }
 
 pub fn missing_field_error_test() {
@@ -273,13 +275,12 @@ pub fn missing_field_error_test() {
   // Missing 'age' field
   let v = value.Map([#(value.String("name"), value.String("Alice"))])
   let result = codec.decode(c, v)
-  result
-  |> should.be_error()
+  let _ = result |> expect.to_be_error()
 
   // Check error message
   let assert Error(err) = result
   codec.format_error(err)
-  |> should.equal("missing field \"age\"")
+  |> expect.to_equal("missing field \"age\"")
 }
 
 pub fn field_type_error_test() {
@@ -292,14 +293,13 @@ pub fn field_type_error_test() {
       #(value.String("age"), value.String("thirty")),
     ])
   let result = codec.decode(c, v)
-  result
-  |> should.be_error()
+  let _ = result |> expect.to_be_error()
 
   // Check error message includes path
   let assert Error(err) = result
   let error_str = codec.format_error(err)
   // Should mention the field name
-  should.be_true(string.contains(error_str, ".age"))
+  expect.to_be_true(string.contains(error_str, ".age"))
 }
 
 // ============================================================================
@@ -311,15 +311,17 @@ pub fn tuple2_codec_test() {
 
   // Encode
   codec.encode(c, #("hello", 42))
-  |> should.equal(value.Array([value.String("hello"), value.Integer(42)]))
+  |> expect.to_equal(value.Array([value.String("hello"), value.Integer(42)]))
 
   // Decode
   codec.decode(c, value.Array([value.String("world"), value.Integer(100)]))
-  |> should.equal(Ok(#("world", 100)))
+  |> expect.to_equal(Ok(#("world", 100)))
 
   // Wrong length
-  codec.decode(c, value.Array([value.String("only one")]))
-  |> should.be_error()
+  let _ =
+    codec.decode(c, value.Array([value.String("only one")]))
+    |> expect.to_be_error()
+  Nil
 }
 
 pub fn tuple3_codec_test() {
@@ -329,7 +331,7 @@ pub fn tuple3_codec_test() {
   let tuple = #(1, 2, 3)
   let encoded = codec.encode(c, tuple)
   codec.decode(c, encoded)
-  |> should.equal(Ok(tuple))
+  |> expect.to_equal(Ok(tuple))
 }
 
 // ============================================================================
@@ -347,7 +349,7 @@ pub fn map_codec_test() {
   // Round-trip
   let encoded = codec.encode(point_codec, point)
   codec.decode(point_codec, encoded)
-  |> should.equal(Ok(point))
+  |> expect.to_equal(Ok(point))
 }
 
 pub fn one_of_codec_test() {
@@ -366,15 +368,17 @@ pub fn one_of_codec_test() {
 
   // Decode int
   codec.decode(flexible_int, value.Integer(42))
-  |> should.equal(Ok(42))
+  |> expect.to_equal(Ok(42))
 
   // Decode string
   codec.decode(flexible_int, value.String("123"))
-  |> should.equal(Ok(123))
+  |> expect.to_equal(Ok(123))
 
   // Invalid string
-  codec.decode(flexible_int, value.String("not a number"))
-  |> should.be_error()
+  let _ =
+    codec.decode(flexible_int, value.String("not a number"))
+    |> expect.to_be_error()
+  Nil
 }
 
 pub fn with_default_codec_test() {
@@ -382,15 +386,15 @@ pub fn with_default_codec_test() {
 
   // Successful decode
   codec.decode(c, value.Integer(42))
-  |> should.equal(Ok(42))
+  |> expect.to_equal(Ok(42))
 
   // Failed decode uses default
   codec.decode(c, value.String("not an int"))
-  |> should.equal(Ok(0))
+  |> expect.to_equal(Ok(0))
 
   // Nil uses default
   codec.decode(c, value.Nil)
-  |> should.equal(Ok(0))
+  |> expect.to_equal(Ok(0))
 }
 
 // ============================================================================
@@ -402,20 +406,18 @@ pub fn int_range_codec_test() {
 
   // In range
   codec.decode(c, value.Integer(50))
-  |> should.equal(Ok(50))
+  |> expect.to_equal(Ok(50))
 
   codec.decode(c, value.Integer(0))
-  |> should.equal(Ok(0))
+  |> expect.to_equal(Ok(0))
 
   codec.decode(c, value.Integer(100))
-  |> should.equal(Ok(100))
+  |> expect.to_equal(Ok(100))
 
   // Out of range
-  codec.decode(c, value.Integer(-1))
-  |> should.be_error()
-
-  codec.decode(c, value.Integer(101))
-  |> should.be_error()
+  let _ = codec.decode(c, value.Integer(-1)) |> expect.to_be_error()
+  let _ = codec.decode(c, value.Integer(101)) |> expect.to_be_error()
+  Nil
 }
 
 pub fn non_empty_string_codec_test() {
@@ -423,11 +425,11 @@ pub fn non_empty_string_codec_test() {
 
   // Non-empty
   codec.decode(c, value.String("hello"))
-  |> should.equal(Ok("hello"))
+  |> expect.to_equal(Ok("hello"))
 
   // Empty fails
-  codec.decode(c, value.String(""))
-  |> should.be_error()
+  let _ = codec.decode(c, value.String("")) |> expect.to_be_error()
+  Nil
 }
 
 pub fn non_empty_list_codec_test() {
@@ -435,11 +437,11 @@ pub fn non_empty_list_codec_test() {
 
   // Non-empty
   codec.decode(c, value.Array([value.Integer(1), value.Integer(2)]))
-  |> should.equal(Ok([1, 2]))
+  |> expect.to_equal(Ok([1, 2]))
 
   // Empty fails
-  codec.decode(c, value.Array([]))
-  |> should.be_error()
+  let _ = codec.decode(c, value.Array([])) |> expect.to_be_error()
+  Nil
 }
 
 // ============================================================================
@@ -540,19 +542,19 @@ pub fn recursive_codec_test() {
   let leaf = Leaf(42)
   let encoded_leaf = codec.encode(c, leaf)
   codec.decode(c, encoded_leaf)
-  |> should.equal(Ok(leaf))
+  |> expect.to_equal(Ok(leaf))
 
   // Branch with leaves
   let tree = Branch(Leaf(1), Leaf(2))
   let encoded_tree = codec.encode(c, tree)
   codec.decode(c, encoded_tree)
-  |> should.equal(Ok(tree))
+  |> expect.to_equal(Ok(tree))
 
   // Nested branches
   let nested = Branch(Branch(Leaf(1), Leaf(2)), Leaf(3))
   let encoded_nested = codec.encode(c, nested)
   codec.decode(c, encoded_nested)
-  |> should.equal(Ok(nested))
+  |> expect.to_equal(Ok(nested))
 }
 
 // ============================================================================
@@ -576,7 +578,7 @@ pub fn full_roundtrip_test() {
   let assert Ok(decoded_user) = codec.decode(c, decoded_value)
 
   decoded_user
-  |> should.equal(user)
+  |> expect.to_equal(user)
 }
 
 pub fn nested_structure_roundtrip_test() {
@@ -595,5 +597,5 @@ pub fn nested_structure_roundtrip_test() {
   let assert Ok(decoded_users) = codec.decode(c, decoded_value)
 
   decoded_users
-  |> should.equal(users)
+  |> expect.to_equal(users)
 }

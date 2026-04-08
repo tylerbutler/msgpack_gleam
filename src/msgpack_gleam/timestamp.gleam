@@ -2,22 +2,32 @@
 ///
 /// The timestamp extension type represents an instantaneous point on the
 /// time-line. It supports nanosecond precision from 1970-01-01 00:00:00 UTC.
+///
+/// Uses `gleam/time/timestamp.Timestamp` as the timestamp representation,
+/// providing seamless interop with the Gleam time ecosystem.
 import gleam/bit_array
-import gleam/int
+import gleam/time/timestamp.{type Timestamp}
 import msgpack_gleam/value.{type Value, Extension}
 
 /// The MessagePack extension type code for timestamps
 pub const timestamp_type_code: Int = -1
 
-/// A timestamp value with seconds since Unix epoch and nanoseconds
-pub type Timestamp {
-  Timestamp(seconds: Int, nanoseconds: Int)
+/// Errors that can occur during timestamp operations.
+pub type TimestampError {
+  /// Nanoseconds value is outside the valid range [0, 999_999_999]
+  InvalidNanoseconds(Int)
+  /// Extension value is not a timestamp (wrong type code)
+  NotATimestamp(expected: Int, got: Int)
+  /// The value is not an Extension at all
+  NotAnExtension(String)
+  /// The timestamp binary payload has an invalid length
+  InvalidDataLength(Int)
 }
 
 /// Create a MessagePack Value from a timestamp.
 /// Chooses the smallest encoding format based on the values.
-pub fn encode(timestamp: Timestamp) -> Value {
-  let Timestamp(seconds, nanoseconds) = timestamp
+pub fn encode(ts: Timestamp) -> Value {
+  let #(seconds, nanoseconds) = timestamp.to_unix_seconds_and_nanoseconds(ts)
 
   case nanoseconds, seconds {
     // Timestamp 32: 4 bytes, stores seconds in 32-bit unsigned int
@@ -48,14 +58,17 @@ pub fn encode(timestamp: Timestamp) -> Value {
 }
 
 /// Decode a MessagePack Extension value as a timestamp.
-/// Returns an error if the extension is not a timestamp type (-1).
-pub fn decode(value: Value) -> Result(Timestamp, String) {
+///
+/// Returns an error if the extension is not a timestamp type (-1),
+/// if the payload length is invalid, or if the decoded nanoseconds
+/// are outside [0, 999_999_999].
+pub fn decode(value: Value) -> Result(Timestamp, TimestampError) {
   case value {
     Extension(type_code, data) if type_code == timestamp_type_code -> {
       let size = bit_array.byte_size(data)
       case size, data {
         // Timestamp 32: 4 bytes
-        4, <<seconds:32>> -> Ok(Timestamp(seconds, 0))
+        4, <<seconds:32>> -> Ok(timestamp.from_unix_seconds(seconds))
 
         // Timestamp 64: 8 bytes
         8, <<combined:32, seconds_lower:32>> -> {
@@ -63,26 +76,37 @@ pub fn decode(value: Value) -> Result(Timestamp, String) {
           let nanoseconds = combined / 4
           let seconds_upper = combined % 4
           let seconds = seconds_upper * 4_294_967_296 + seconds_lower
-          Ok(Timestamp(seconds, nanoseconds))
+          case nanoseconds >= 0 && nanoseconds <= 999_999_999 {
+            True ->
+              Ok(timestamp.from_unix_seconds_and_nanoseconds(
+                seconds:,
+                nanoseconds:,
+              ))
+            False -> Error(InvalidNanoseconds(nanoseconds))
+          }
         }
 
         // Timestamp 96: 12 bytes
         12, <<nanoseconds:32, seconds:64-signed>> ->
-          Ok(Timestamp(seconds, nanoseconds))
+          case nanoseconds >= 0 && nanoseconds <= 999_999_999 {
+            True ->
+              Ok(timestamp.from_unix_seconds_and_nanoseconds(
+                seconds:,
+                nanoseconds:,
+              ))
+            False -> Error(InvalidNanoseconds(nanoseconds))
+          }
 
-        _, _ -> Error("Invalid timestamp data length: " <> int.to_string(size))
+        _, _ -> Error(InvalidDataLength(size))
       }
     }
     Extension(type_code, _) ->
-      Error(
-        "Expected timestamp extension type (-1), got: "
-        <> int.to_string(type_code),
-      )
-    _ -> Error("Expected Extension value, got different type")
+      Error(NotATimestamp(expected: timestamp_type_code, got: type_code))
+    _ -> Error(NotAnExtension("Expected Extension value"))
   }
 }
 
-/// Check if a Value is a timestamp extension
+/// Check if a Value is a timestamp extension.
 pub fn is_timestamp(value: Value) -> Bool {
   case value {
     Extension(tc, _) if tc == timestamp_type_code -> True
@@ -90,24 +114,29 @@ pub fn is_timestamp(value: Value) -> Bool {
   }
 }
 
-/// Create a timestamp from Unix seconds (no nanoseconds)
-pub fn from_unix_seconds(seconds: Int) -> Timestamp {
-  Timestamp(seconds, 0)
-}
-
-/// Create a timestamp from Unix milliseconds
+/// Create a timestamp from Unix milliseconds.
+///
+/// Negative milliseconds are normalized so that nanoseconds is always
+/// non-negative. For example, `from_unix_millis(-1)` produces a
+/// timestamp with seconds = -1 and nanoseconds = 999_000_000.
 pub fn from_unix_millis(millis: Int) -> Timestamp {
-  let seconds = millis / 1000
-  let nanoseconds = { millis % 1000 } * 1_000_000
-  Timestamp(seconds, nanoseconds)
+  let remainder = millis % 1000
+  case remainder < 0 {
+    True -> {
+      let seconds = millis / 1000 - 1
+      let nanoseconds = { remainder + 1000 } * 1_000_000
+      timestamp.from_unix_seconds_and_nanoseconds(seconds:, nanoseconds:)
+    }
+    False -> {
+      let seconds = millis / 1000
+      let nanoseconds = remainder * 1_000_000
+      timestamp.from_unix_seconds_and_nanoseconds(seconds:, nanoseconds:)
+    }
+  }
 }
 
-/// Convert a timestamp to Unix seconds (truncating nanoseconds)
-pub fn to_unix_seconds(timestamp: Timestamp) -> Int {
-  timestamp.seconds
-}
-
-/// Convert a timestamp to Unix milliseconds
-pub fn to_unix_millis(timestamp: Timestamp) -> Int {
-  timestamp.seconds * 1000 + timestamp.nanoseconds / 1_000_000
+/// Convert a timestamp to Unix milliseconds (truncating sub-millisecond precision).
+pub fn to_unix_millis(ts: Timestamp) -> Int {
+  let #(seconds, nanoseconds) = timestamp.to_unix_seconds_and_nanoseconds(ts)
+  seconds * 1000 + nanoseconds / 1_000_000
 }

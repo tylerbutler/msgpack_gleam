@@ -55,27 +55,32 @@ let ext_val = Extension(1, <<0xaa, 0xbb>>)
 
 ## Timestamps
 
-MessagePack has a built-in timestamp extension type (type -1). Use the `msgpack_gleam/timestamp` module:
+MessagePack has a built-in timestamp extension type (type -1). Use the `msgpack_gleam/timestamp` module with `gleam_time`'s `Timestamp` type:
 
 ```gleam
+import gleam/time/timestamp
 import msgpack_gleam.{pack, unpack_exact}
-import msgpack_gleam/timestamp.{Timestamp}
+import msgpack_gleam/timestamp as msgpack_timestamp
 
-// Create a timestamp
+// Create a timestamp using gleam_time
 let ts = timestamp.from_unix_seconds(1_234_567_890)
-// Or with nanoseconds: Timestamp(seconds: 1234567890, nanoseconds: 500_000_000)
+// Or with nanoseconds:
+let ts_ns = timestamp.from_unix_seconds_and_nanoseconds(
+  seconds: 1_234_567_890,
+  nanoseconds: 500_000_000,
+)
 
 // Encode it
-let value = timestamp.encode(ts)
+let value = msgpack_timestamp.encode(ts)
 let assert Ok(data) = pack(value)
 
 // Decode it back
 let assert Ok(decoded_value) = unpack_exact(data)
-let assert Ok(decoded_ts) = timestamp.decode(decoded_value)
+let assert Ok(decoded_ts) = msgpack_timestamp.decode(decoded_value)
 
-// Convenience functions
-let millis = timestamp.to_unix_millis(ts)
-let from_millis = timestamp.from_unix_millis(1_234_567_890_123)
+// Millisecond convenience functions
+let millis = msgpack_timestamp.to_unix_millis(ts)
+let from_millis = msgpack_timestamp.from_unix_millis(1_234_567_890_123)
 ```
 
 ## Streaming Decode
