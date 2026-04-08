@@ -1,3 +1,5 @@
+import gleam/int
+
 /// Errors that can occur during MessagePack encoding.
 pub type EncodeError {
   /// Integer is too large to be represented in MessagePack format
@@ -30,4 +32,48 @@ pub type DecodeError {
   ReservedFormat(Int)
   /// Trailing bytes remain after decoding
   TrailingBytes(Int)
+  /// Float value is NaN or Infinity, which BEAM cannot represent
+  UnsupportedFloat
+  /// Payload exceeds maximum allowed size or depth
+  PayloadTooLarge(Int)
+}
+
+/// Format an encode error as a human-readable string.
+pub fn format_encode_error(error: EncodeError) -> String {
+  case error {
+    IntegerTooLarge(n) ->
+      "Integer too large for MessagePack: " <> int.to_string(n)
+    StringTooLong(n) ->
+      "String too long: " <> int.to_string(n) <> " bytes (max 4294967295)"
+    BinaryTooLong(n) ->
+      "Binary too long: " <> int.to_string(n) <> " bytes (max 4294967295)"
+    ArrayTooLong(n) ->
+      "Array too long: " <> int.to_string(n) <> " elements (max 4294967295)"
+    MapTooLong(n) ->
+      "Map too long: " <> int.to_string(n) <> " entries (max 4294967295)"
+    InvalidExtensionTypeCode(n) ->
+      "Invalid extension type code: "
+      <> int.to_string(n)
+      <> " (must be -128 to 127)"
+    ExtensionDataTooLong(n) ->
+      "Extension data too long: "
+      <> int.to_string(n)
+      <> " bytes (max 4294967295)"
+  }
+}
+
+/// Format a decode error as a human-readable string.
+pub fn format_decode_error(error: DecodeError) -> String {
+  case error {
+    UnexpectedEof -> "Unexpected end of input"
+    InvalidFormat(b) -> "Invalid format byte: " <> int.to_string(b)
+    InvalidUtf8 -> "Invalid UTF-8 in string"
+    IntegerOverflow -> "Integer overflow"
+    ReservedFormat(b) -> "Reserved format byte: " <> int.to_string(b)
+    TrailingBytes(n) ->
+      "Unexpected trailing bytes: " <> int.to_string(n) <> " bytes remaining"
+    UnsupportedFloat -> "Unsupported float value (NaN or Infinity)"
+    PayloadTooLarge(n) ->
+      "Payload too large: " <> int.to_string(n) <> " bytes or elements"
+  }
 }

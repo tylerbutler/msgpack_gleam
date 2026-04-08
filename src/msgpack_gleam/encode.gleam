@@ -178,27 +178,42 @@ fn encode_binary(data: BitArray) -> Result(BytesTree, EncodeError) {
 }
 
 // ============================================================================
+// Collection header helper (shared by array and map encoding)
+// ============================================================================
+
+fn encode_collection_header(
+  len: Int,
+  fix_base: Int,
+  fmt16: Int,
+  fmt32: Int,
+  too_long_error: fn(Int) -> error.EncodeError,
+) -> Result(BytesTree, error.EncodeError) {
+  case len {
+    _ if len <= 15 -> {
+      let header = fix_base + len
+      Ok(bytes_tree.from_bit_array(<<header:8>>))
+    }
+    _ if len <= 65_535 -> Ok(bytes_tree.from_bit_array(<<fmt16:8, len:16>>))
+    _ if len <= 4_294_967_295 ->
+      Ok(bytes_tree.from_bit_array(<<fmt32:8, len:32>>))
+    _ -> Error(too_long_error(len))
+  }
+}
+
+// ============================================================================
 // Array encoding
 // ============================================================================
 
 fn encode_array(items: List(Value)) -> Result(BytesTree, EncodeError) {
   let len = list.length(items)
 
-  use header <- result.try(case len {
-    // fixarray: 0x90-0x9f (0-15 elements)
-    _ if len <= 15 -> {
-      let h = 0x90 + len
-      Ok(bytes_tree.from_bit_array(<<h:8>>))
-    }
-
-    // array16: 0xdc (16-65535 elements)
-    _ if len <= 65_535 -> Ok(bytes_tree.from_bit_array(<<0xdc, len:16>>))
-
-    // array32: 0xdd (65536+ elements)
-    _ if len <= 4_294_967_295 -> Ok(bytes_tree.from_bit_array(<<0xdd, len:32>>))
-
-    _ -> Error(error.ArrayTooLong(len))
-  })
+  use header <- result.try(encode_collection_header(
+    len,
+    0x90,
+    0xdc,
+    0xdd,
+    error.ArrayTooLong,
+  ))
 
   // Encode all items
   use encoded_items <- result.try(list.try_map(items, encode_value))
@@ -213,21 +228,13 @@ fn encode_array(items: List(Value)) -> Result(BytesTree, EncodeError) {
 fn encode_map(pairs: List(#(Value, Value))) -> Result(BytesTree, EncodeError) {
   let len = list.length(pairs)
 
-  use header <- result.try(case len {
-    // fixmap: 0x80-0x8f (0-15 pairs)
-    _ if len <= 15 -> {
-      let h = 0x80 + len
-      Ok(bytes_tree.from_bit_array(<<h:8>>))
-    }
-
-    // map16: 0xde (16-65535 pairs)
-    _ if len <= 65_535 -> Ok(bytes_tree.from_bit_array(<<0xde, len:16>>))
-
-    // map32: 0xdf (65536+ pairs)
-    _ if len <= 4_294_967_295 -> Ok(bytes_tree.from_bit_array(<<0xdf, len:32>>))
-
-    _ -> Error(error.MapTooLong(len))
-  })
+  use header <- result.try(encode_collection_header(
+    len,
+    0x80,
+    0xde,
+    0xdf,
+    error.MapTooLong,
+  ))
 
   // Encode all pairs
   use encoded_pairs <- result.try(

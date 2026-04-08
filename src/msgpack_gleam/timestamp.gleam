@@ -6,6 +6,7 @@
 /// Uses `gleam/time/timestamp.Timestamp` as the timestamp representation,
 /// providing seamless interop with the Gleam time ecosystem.
 import gleam/bit_array
+import gleam/int
 import gleam/time/timestamp.{type Timestamp}
 import msgpack_gleam/value.{type Value, Extension}
 
@@ -24,10 +25,36 @@ pub type TimestampError {
   InvalidDataLength(Int)
 }
 
+/// Format a TimestampError as a human-readable string.
+pub fn format_timestamp_error(error: TimestampError) -> String {
+  case error {
+    NotAnExtension(got) -> "Expected Extension value, got " <> got
+    NotATimestamp(expected, got) ->
+      "Expected extension type "
+      <> int.to_string(expected)
+      <> ", got "
+      <> int.to_string(got)
+    InvalidDataLength(size) ->
+      "Invalid timestamp data length: "
+      <> int.to_string(size)
+      <> " bytes (expected 4, 8, or 12)"
+    InvalidNanoseconds(ns) ->
+      "Invalid nanoseconds: "
+      <> int.to_string(ns)
+      <> " (must be 0 to 999999999)"
+  }
+}
+
 /// Create a MessagePack Value from a timestamp.
 /// Chooses the smallest encoding format based on the values.
 pub fn encode(ts: Timestamp) -> Value {
   let #(seconds, nanoseconds) = timestamp.to_unix_seconds_and_nanoseconds(ts)
+
+  // Normalize: ensure nanoseconds is in [0, 999_999_999]
+  let #(seconds, nanoseconds) = case nanoseconds < 0 {
+    True -> #(seconds - 1, nanoseconds + 1_000_000_000)
+    False -> #(seconds, nanoseconds)
+  }
 
   case nanoseconds, seconds {
     // Timestamp 32: 4 bytes, stores seconds in 32-bit unsigned int

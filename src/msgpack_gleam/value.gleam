@@ -20,3 +20,18 @@ pub type Value {
   /// Extension type with type code (-128 to 127) and data
   Extension(type_code: Int, data: BitArray)
 }
+
+/// Returns the type name of a Value as a human-readable string.
+pub fn type_name(v: Value) -> String {
+  case v {
+    Nil -> "Nil"
+    Boolean(_) -> "Boolean"
+    Integer(_) -> "Integer"
+    Float(_) -> "Float"
+    String(_) -> "String"
+    Binary(_) -> "Binary"
+    Array(_) -> "Array"
+    Map(_) -> "Map"
+    Extension(_, _) -> "Extension"
+  }
+}
