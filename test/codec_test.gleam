@@ -524,7 +524,6 @@ fn find_int_field(
   }
 }
 
-
 fn find_value_field(
   pairs: List(#(value.Value, value.Value)),
   name: String,

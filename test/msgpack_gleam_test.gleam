@@ -1382,14 +1382,16 @@ pub fn timestamp_year_2514_boundary_96bit_test() {
 
 pub fn timestamp_decode_wrong_extension_type_test() {
   msgpack_timestamp.decode(value.Extension(5, <<0, 0, 0, 0>>))
-  |> expect.to_equal(Error(msgpack_timestamp.NotATimestamp(expected: -1, got: 5)))
+  |> expect.to_equal(
+    Error(msgpack_timestamp.NotATimestamp(expected: -1, got: 5)),
+  )
 }
 
 pub fn timestamp_decode_non_extension_test() {
   msgpack_timestamp.decode(value.Integer(42))
-  |> expect.to_equal(Error(msgpack_timestamp.NotAnExtension(
-    "Expected Extension value",
-  )))
+  |> expect.to_equal(
+    Error(msgpack_timestamp.NotAnExtension("Expected Extension value")),
+  )
 }
 
 pub fn timestamp_decode_invalid_data_length_test() {
