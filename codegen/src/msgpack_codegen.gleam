@@ -6,6 +6,7 @@
 /// Types marked with `/// @derive(msgpack)` will have codecs generated.
 import argv
 import gleam/io
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import msgpack_codegen/generator
@@ -86,5 +87,3 @@ fn run(input_path: String, output_path: Option(String)) {
     }
   }
 }
-
-import gleam/option.{type Option, None, Some}
