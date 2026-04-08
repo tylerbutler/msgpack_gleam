@@ -33,20 +33,21 @@
 /// ## Timestamps
 ///
 /// MessagePack has a built-in timestamp extension type. Use the
-/// `msgpack_gleam/timestamp` module for convenient timestamp handling:
+/// `msgpack_gleam/timestamp` module with `gleam_time`'s `Timestamp`:
 ///
 /// ```gleam
+/// import gleam/time/timestamp
 /// import msgpack_gleam.{pack, unpack_exact}
-/// import msgpack_gleam/timestamp
+/// import msgpack_gleam/timestamp as msgpack_timestamp
 ///
 /// // Create and encode a timestamp
 /// let ts = timestamp.from_unix_seconds(1234567890)
-/// let value = timestamp.encode(ts)
+/// let value = msgpack_timestamp.encode(ts)
 /// let assert Ok(data) = pack(value)
 ///
 /// // Decode it back
 /// let assert Ok(decoded_value) = unpack_exact(data)
-/// let assert Ok(decoded_ts) = timestamp.decode(decoded_value)
+/// let assert Ok(decoded_ts) = msgpack_timestamp.decode(decoded_value)
 /// ```
 import msgpack_gleam/decode
 import msgpack_gleam/encode

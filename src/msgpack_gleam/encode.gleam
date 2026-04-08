@@ -27,6 +27,17 @@ fn encode_value(value: Value) -> Result(BytesTree, EncodeError) {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/// Build a BytesTree from a header BitArray followed by a payload BitArray.
+fn with_payload(header: BitArray, payload: BitArray) -> BytesTree {
+  bytes_tree.new()
+  |> bytes_tree.append(header)
+  |> bytes_tree.append(payload)
+}
+
+// ============================================================================
 // Nil (0xc0)
 // ============================================================================
 
@@ -129,36 +140,17 @@ fn encode_string(s: String) -> Result(BytesTree, EncodeError) {
     // fixstr: 0xa0-0xbf (0-31 bytes)
     _ if len <= 31 -> {
       let header = 0xa0 + len
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<header:8>>)
-        |> bytes_tree.append(bytes),
-      )
+      Ok(with_payload(<<header:8>>, bytes))
     }
 
     // str8: 0xd9 (32-255 bytes)
-    _ if len <= 255 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xd9, len:8>>)
-        |> bytes_tree.append(bytes),
-      )
+    _ if len <= 255 -> Ok(with_payload(<<0xd9, len:8>>, bytes))
 
     // str16: 0xda (256-65535 bytes)
-    _ if len <= 65_535 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xda, len:16>>)
-        |> bytes_tree.append(bytes),
-      )
+    _ if len <= 65_535 -> Ok(with_payload(<<0xda, len:16>>, bytes))
 
     // str32: 0xdb (65536+ bytes)
-    _ if len <= 4_294_967_295 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xdb, len:32>>)
-        |> bytes_tree.append(bytes),
-      )
+    _ if len <= 4_294_967_295 -> Ok(with_payload(<<0xdb, len:32>>, bytes))
 
     _ -> Error(error.StringTooLong(len))
   }
@@ -173,28 +165,13 @@ fn encode_binary(data: BitArray) -> Result(BytesTree, EncodeError) {
 
   case len {
     // bin8: 0xc4 (0-255 bytes)
-    _ if len <= 255 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xc4, len:8>>)
-        |> bytes_tree.append(data),
-      )
+    _ if len <= 255 -> Ok(with_payload(<<0xc4, len:8>>, data))
 
     // bin16: 0xc5 (256-65535 bytes)
-    _ if len <= 65_535 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xc5, len:16>>)
-        |> bytes_tree.append(data),
-      )
+    _ if len <= 65_535 -> Ok(with_payload(<<0xc5, len:16>>, data))
 
     // bin32: 0xc6 (65536+ bytes)
-    _ if len <= 4_294_967_295 ->
-      Ok(
-        bytes_tree.new()
-        |> bytes_tree.append(<<0xc6, len:32>>)
-        |> bytes_tree.append(data),
-      )
+    _ if len <= 4_294_967_295 -> Ok(with_payload(<<0xc6, len:32>>, data))
 
     _ -> Error(error.BinaryTooLong(len))
   }
@@ -293,69 +270,22 @@ fn encode_extension(
 
       case len {
         // fixext1: 0xd4
-        1 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xd4, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        1 -> Ok(with_payload(<<0xd4, tc:8>>, data))
         // fixext2: 0xd5
-        2 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xd5, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        2 -> Ok(with_payload(<<0xd5, tc:8>>, data))
         // fixext4: 0xd6
-        4 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xd6, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        4 -> Ok(with_payload(<<0xd6, tc:8>>, data))
         // fixext8: 0xd7
-        8 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xd7, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        8 -> Ok(with_payload(<<0xd7, tc:8>>, data))
         // fixext16: 0xd8
-        16 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xd8, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        16 -> Ok(with_payload(<<0xd8, tc:8>>, data))
         // ext8: 0xc7 (0-255 bytes, excluding fixext sizes)
-        _ if len <= 255 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xc7, len:8, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        _ if len <= 255 -> Ok(with_payload(<<0xc7, len:8, tc:8>>, data))
         // ext16: 0xc8 (256-65535 bytes)
-        _ if len <= 65_535 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xc8, len:16, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+        _ if len <= 65_535 -> Ok(with_payload(<<0xc8, len:16, tc:8>>, data))
         // ext32: 0xc9 (65536+ bytes)
         _ if len <= 4_294_967_295 ->
-          Ok(
-            bytes_tree.new()
-            |> bytes_tree.append(<<0xc9, len:32, tc:8>>)
-            |> bytes_tree.append(data),
-          )
-
+          Ok(with_payload(<<0xc9, len:32, tc:8>>, data))
         _ -> Error(error.ExtensionDataTooLong(len))
       }
     }

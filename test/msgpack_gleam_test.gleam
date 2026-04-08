@@ -2,9 +2,10 @@ import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/string
+import gleam/time/timestamp
 import msgpack_gleam.{pack, unpack, unpack_exact}
 import msgpack_gleam/error
-import msgpack_gleam/timestamp.{Timestamp}
+import msgpack_gleam/timestamp as msgpack_timestamp
 import msgpack_gleam/value.{
   Array, Binary, Boolean, Extension, Float, Integer, Map, Nil, String,
 }
@@ -1065,9 +1066,11 @@ pub fn decode_all_timestamp_encodings_test() {
       test_case.value
     list.each(test_case.msgpack, fn(encoding) {
       let assert Ok(decoded_value) = unpack_exact(encoding)
-      let assert Ok(ts) = timestamp.decode(decoded_value)
-      ts.seconds |> expect.to_equal(expected_seconds)
-      ts.nanoseconds |> expect.to_equal(expected_nanos)
+      let assert Ok(ts) = msgpack_timestamp.decode(decoded_value)
+      let #(seconds, nanoseconds) =
+        timestamp.to_unix_seconds_and_nanoseconds(ts)
+      seconds |> expect.to_equal(expected_seconds)
+      nanoseconds |> expect.to_equal(expected_nanos)
     })
   })
 }
@@ -1104,7 +1107,11 @@ fn test_value_to_value(tv: test_helpers.TestValue) -> value.Value {
         }),
       )
     ExtValue(t, d) -> Extension(t, d)
-    TimestampValue(s, ns) -> timestamp.encode(Timestamp(s, ns))
+    TimestampValue(s, ns) ->
+      msgpack_timestamp.encode(timestamp.from_unix_seconds_and_nanoseconds(
+        seconds: s,
+        nanoseconds: ns,
+      ))
   }
 }
 
@@ -1125,8 +1132,8 @@ fn assert_numeric_equal(decoded: value.Value, expected_int: Int) -> Nil {
 
 pub fn timestamp_encode_32bit_test() {
   // Unix epoch (0 seconds) should encode as fixext4
-  let ts = Timestamp(0, 0)
-  let value = timestamp.encode(ts)
+  let ts = timestamp.from_unix_seconds(0)
+  let value = msgpack_timestamp.encode(ts)
   let assert Ok(data) = pack(value)
   // fixext4 (0xd6), type -1 (0xff), 4 bytes of zeros
   data |> expect.to_equal(<<0xd6, 0xff, 0x00, 0x00, 0x00, 0x00>>)
@@ -1134,8 +1141,12 @@ pub fn timestamp_encode_32bit_test() {
 
 pub fn timestamp_encode_64bit_test() {
   // Timestamp with nanoseconds should encode as fixext8
-  let ts = Timestamp(1, 500_000_000)
-  let value = timestamp.encode(ts)
+  let ts =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 1,
+      nanoseconds: 500_000_000,
+    )
+  let value = msgpack_timestamp.encode(ts)
   let assert Ok(data) = pack(value)
   // fixext8 (0xd7), type -1 (0xff), 8 bytes
   let assert <<0xd7, 0xff, _:bits>> = data
@@ -1145,48 +1156,106 @@ pub fn timestamp_encode_64bit_test() {
 pub fn timestamp_decode_32bit_test() {
   // Decode a 32-bit timestamp
   let assert Ok(value) = unpack_exact(<<0xd6, 0xff, 0x00, 0x00, 0x00, 0x01>>)
-  let assert Ok(ts) = timestamp.decode(value)
-  ts |> expect.to_equal(Timestamp(1, 0))
+  let assert Ok(ts) = msgpack_timestamp.decode(value)
+  ts
+  |> expect.to_equal(timestamp.from_unix_seconds(1))
 }
 
 pub fn timestamp_roundtrip_test() {
   // Test round-trip encoding/decoding
-  let original = Timestamp(1_234_567_890, 123_456_789)
-  let value = timestamp.encode(original)
+  let original =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 1_234_567_890,
+      nanoseconds: 123_456_789,
+    )
+  let value = msgpack_timestamp.encode(original)
   let assert Ok(data) = pack(value)
   let assert Ok(decoded_value) = unpack_exact(data)
-  let assert Ok(decoded_ts) = timestamp.decode(decoded_value)
+  let assert Ok(decoded_ts) = msgpack_timestamp.decode(decoded_value)
   decoded_ts |> expect.to_equal(original)
 }
 
 pub fn timestamp_from_unix_seconds_test() {
   let ts = timestamp.from_unix_seconds(1_234_567_890)
-  ts |> expect.to_equal(Timestamp(1_234_567_890, 0))
+  ts
+  |> expect.to_equal(timestamp.from_unix_seconds_and_nanoseconds(
+    seconds: 1_234_567_890,
+    nanoseconds: 0,
+  ))
 }
 
 pub fn timestamp_from_unix_millis_test() {
-  let ts = timestamp.from_unix_millis(1_234_567_890_123)
-  ts.seconds |> expect.to_equal(1_234_567_890)
-  ts.nanoseconds |> expect.to_equal(123_000_000)
+  let ts = msgpack_timestamp.from_unix_millis(1_234_567_890_123)
+  let #(seconds, nanoseconds) = timestamp.to_unix_seconds_and_nanoseconds(ts)
+  seconds |> expect.to_equal(1_234_567_890)
+  nanoseconds |> expect.to_equal(123_000_000)
 }
 
 pub fn timestamp_to_unix_millis_test() {
-  let ts = Timestamp(1_234_567_890, 123_456_789)
-  let millis = timestamp.to_unix_millis(ts)
+  let ts =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 1_234_567_890,
+      nanoseconds: 123_456_789,
+    )
+  let millis = msgpack_timestamp.to_unix_millis(ts)
   millis |> expect.to_equal(1_234_567_890_123)
 }
 
 pub fn timestamp_is_timestamp_test() {
   // Extension with type -1 is a timestamp
-  timestamp.is_timestamp(Extension(-1, <<>>)) |> expect.to_be_true
+  msgpack_timestamp.is_timestamp(Extension(-1, <<>>)) |> expect.to_be_true
 
   // Other extensions are not timestamps
-  timestamp.is_timestamp(Extension(0, <<>>)) |> expect.to_be_false
-  timestamp.is_timestamp(Extension(1, <<>>)) |> expect.to_be_false
+  msgpack_timestamp.is_timestamp(Extension(0, <<>>)) |> expect.to_be_false
+  msgpack_timestamp.is_timestamp(Extension(1, <<>>)) |> expect.to_be_false
 
   // Other value types are not timestamps
-  timestamp.is_timestamp(Nil) |> expect.to_be_false
-  timestamp.is_timestamp(Integer(0)) |> expect.to_be_false
+  msgpack_timestamp.is_timestamp(Nil) |> expect.to_be_false
+  msgpack_timestamp.is_timestamp(Integer(0)) |> expect.to_be_false
+}
+
+pub fn timestamp_from_unix_millis_negative_test() {
+  // from_unix_millis(-1) should normalize to seconds=-1, nanoseconds=999_000_000
+  let ts = msgpack_timestamp.from_unix_millis(-1)
+  let #(seconds, nanoseconds) = timestamp.to_unix_seconds_and_nanoseconds(ts)
+  seconds |> expect.to_equal(-1)
+  nanoseconds |> expect.to_equal(999_000_000)
+}
+
+pub fn timestamp_from_unix_millis_negative_roundtrip_test() {
+  // Negative millis should roundtrip correctly
+  let ts = msgpack_timestamp.from_unix_millis(-1234)
+  let millis = msgpack_timestamp.to_unix_millis(ts)
+  millis |> expect.to_equal(-1234)
+}
+
+pub fn timestamp_decode_rejects_invalid_nanoseconds_test() {
+  // Timestamp 96 with nanoseconds = 1_000_000_000 (out of range)
+  let invalid_ns: Int = 1_000_000_000
+  let value = Extension(-1, <<invalid_ns:32, 0:64>>)
+  let assert Error(msgpack_timestamp.InvalidNanoseconds(ns)) =
+    msgpack_timestamp.decode(value)
+  ns |> expect.to_equal(1_000_000_000)
+}
+
+pub fn timestamp_decode_rejects_wrong_type_code_test() {
+  let value = Extension(1, <<0:32>>)
+  let assert Error(msgpack_timestamp.NotATimestamp(expected: -1, got: 1)) =
+    msgpack_timestamp.decode(value)
+  Nil
+}
+
+pub fn timestamp_decode_rejects_non_extension_test() {
+  let assert Error(msgpack_timestamp.NotAnExtension(_)) =
+    msgpack_timestamp.decode(Integer(42))
+  Nil
+}
+
+pub fn timestamp_decode_rejects_invalid_data_length_test() {
+  let value = Extension(-1, <<0, 0, 0>>)
+  let assert Error(msgpack_timestamp.InvalidDataLength(3)) =
+    msgpack_timestamp.decode(value)
+  Nil
 }
 
 // ============================================================================
@@ -1271,88 +1340,114 @@ pub fn encode_invalid_extension_type_code_negative_test() {
 // ============================================================================
 
 pub fn timestamp_max_nanoseconds_test() {
-  let ts = timestamp.Timestamp(1, 999_999_999)
-  let v = timestamp.encode(ts)
+  let ts =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 1,
+      nanoseconds: 999_999_999,
+    )
+  let v = msgpack_timestamp.encode(ts)
   let assert Ok(data) = pack(v)
   let assert Ok(decoded_v) = unpack_exact(data)
-  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  let assert Ok(decoded) = msgpack_timestamp.decode(decoded_v)
   decoded |> expect.to_equal(ts)
 }
 
 pub fn timestamp_year_2514_boundary_64bit_test() {
-  let ts = timestamp.Timestamp(17_179_869_183, 0)
-  let v = timestamp.encode(ts)
+  let ts =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 17_179_869_183,
+      nanoseconds: 0,
+    )
+  let v = msgpack_timestamp.encode(ts)
   let assert Ok(data) = pack(v)
   let assert <<0xd7, _:bits>> = data
   let assert Ok(decoded_v) = unpack_exact(data)
-  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  let assert Ok(decoded) = msgpack_timestamp.decode(decoded_v)
   decoded |> expect.to_equal(ts)
 }
 
 pub fn timestamp_year_2514_boundary_96bit_test() {
-  let ts = timestamp.Timestamp(17_179_869_184, 0)
-  let v = timestamp.encode(ts)
+  let ts =
+    timestamp.from_unix_seconds_and_nanoseconds(
+      seconds: 17_179_869_184,
+      nanoseconds: 0,
+    )
+  let v = msgpack_timestamp.encode(ts)
   let assert Ok(data) = pack(v)
   let assert <<0xc7, 12, _:bits>> = data
   let assert Ok(decoded_v) = unpack_exact(data)
-  let assert Ok(decoded) = timestamp.decode(decoded_v)
+  let assert Ok(decoded) = msgpack_timestamp.decode(decoded_v)
   decoded |> expect.to_equal(ts)
 }
 
 pub fn timestamp_decode_wrong_extension_type_test() {
-  timestamp.decode(value.Extension(5, <<0, 0, 0, 0>>))
-  |> expect.to_equal(Error(timestamp.WrongExtensionType(-1, 5)))
+  msgpack_timestamp.decode(value.Extension(5, <<0, 0, 0, 0>>))
+  |> expect.to_equal(Error(msgpack_timestamp.NotATimestamp(expected: -1, got: 5)))
 }
 
 pub fn timestamp_decode_non_extension_test() {
-  timestamp.decode(value.Integer(42))
-  |> expect.to_equal(Error(timestamp.NotAnExtension("Integer")))
+  msgpack_timestamp.decode(value.Integer(42))
+  |> expect.to_equal(Error(msgpack_timestamp.NotAnExtension(
+    "Expected Extension value",
+  )))
 }
 
 pub fn timestamp_decode_invalid_data_length_test() {
-  timestamp.decode(value.Extension(-1, <<0, 0, 0, 0, 0, 0>>))
-  |> expect.to_equal(Error(timestamp.InvalidTimestampData(6)))
+  msgpack_timestamp.decode(value.Extension(-1, <<0, 0, 0, 0, 0, 0>>))
+  |> expect.to_equal(Error(msgpack_timestamp.InvalidDataLength(6)))
 }
 
 pub fn format_timestamp_error_not_extension_test() {
-  timestamp.format_timestamp_error(timestamp.NotAnExtension("Integer"))
+  msgpack_timestamp.format_timestamp_error(msgpack_timestamp.NotAnExtension(
+    "Integer",
+  ))
   |> expect.to_equal("Expected Extension value, got Integer")
 }
 
 pub fn format_timestamp_error_wrong_type_test() {
-  timestamp.format_timestamp_error(timestamp.WrongExtensionType(-1, 5))
+  msgpack_timestamp.format_timestamp_error(msgpack_timestamp.NotATimestamp(
+    expected: -1,
+    got: 5,
+  ))
   |> expect.to_equal("Expected extension type -1, got 5")
 }
 
 pub fn format_timestamp_error_invalid_data_test() {
-  timestamp.format_timestamp_error(timestamp.InvalidTimestampData(6))
+  msgpack_timestamp.format_timestamp_error(msgpack_timestamp.InvalidDataLength(
+    6,
+  ))
   |> expect.to_equal(
     "Invalid timestamp data length: 6 bytes (expected 4, 8, or 12)",
   )
 }
 
 pub fn millis_roundtrip_positive_test() {
-  let ts = timestamp.from_unix_millis(1500)
-  timestamp.to_unix_millis(ts) |> expect.to_equal(1500)
+  let ts = msgpack_timestamp.from_unix_millis(1500)
+  msgpack_timestamp.to_unix_millis(ts) |> expect.to_equal(1500)
 }
 
 pub fn millis_roundtrip_zero_test() {
-  let ts = timestamp.from_unix_millis(0)
-  timestamp.to_unix_millis(ts) |> expect.to_equal(0)
-  ts |> expect.to_equal(timestamp.Timestamp(0, 0))
+  let ts = msgpack_timestamp.from_unix_millis(0)
+  msgpack_timestamp.to_unix_millis(ts) |> expect.to_equal(0)
+  ts
+  |> expect.to_equal(timestamp.from_unix_seconds_and_nanoseconds(
+    seconds: 0,
+    nanoseconds: 0,
+  ))
 }
 
 pub fn is_timestamp_true_test() {
-  let v = timestamp.encode(timestamp.Timestamp(0, 0))
-  timestamp.is_timestamp(v) |> expect.to_equal(True)
+  let v = msgpack_timestamp.encode(timestamp.from_unix_seconds(0))
+  msgpack_timestamp.is_timestamp(v) |> expect.to_equal(True)
 }
 
 pub fn is_timestamp_false_test() {
-  timestamp.is_timestamp(value.Integer(42)) |> expect.to_equal(False)
+  msgpack_timestamp.is_timestamp(value.Integer(42)) |> expect.to_equal(False)
 }
 
 pub fn is_timestamp_wrong_ext_test() {
-  timestamp.is_timestamp(value.Extension(5, <<>>)) |> expect.to_equal(False)
+  msgpack_timestamp.is_timestamp(value.Extension(5, <<>>))
+  |> expect.to_equal(False)
 }
 
 pub fn format_encode_error_integer_too_large_test() {

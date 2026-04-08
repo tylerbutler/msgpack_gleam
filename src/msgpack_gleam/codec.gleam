@@ -206,11 +206,7 @@ pub fn nullable(inner: Codec(a)) -> Codec(Option(a)) {
     decoder: fn(v) {
       case v {
         value.Nil -> Ok(None)
-        other ->
-          case inner.decoder(other) {
-            Ok(a) -> Ok(Some(a))
-            Error(e) -> Error(e)
-          }
+        other -> result.map(inner.decoder(other), Some)
       }
     },
   )
@@ -1051,6 +1047,7 @@ fn map_index_error(
     Error(e) -> Error(IndexError(index, e))
   }
 }
+
 
 // ============================================================================
 // Error Formatting

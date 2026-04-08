@@ -476,36 +476,24 @@ fn tree_codec() -> Codec(TreeNode) {
     fn(v) {
       case v {
         value.Map(pairs) -> {
-          // Find the type field
-          case find_string_field(pairs, "type") {
-            Ok("leaf") -> {
-              case find_int_field(pairs, "value") {
-                Ok(val) -> Ok(Leaf(val))
-                Error(e) -> Error(e)
-              }
+          use tag <- result.try(find_string_field(pairs, "type"))
+          case tag {
+            "leaf" -> result.map(find_int_field(pairs, "value"), Leaf)
+            "branch" -> {
+              let decoder = codec.lazy(tree_codec)
+              use left_val <- result.try(find_value_field(pairs, "left"))
+              use right_val <- result.try(find_value_field(pairs, "right"))
+              use left <- result.try(
+                codec.decode(decoder, left_val)
+                |> result.map_error(codec.FieldError("left", _)),
+              )
+              use right <- result.try(
+                codec.decode(decoder, right_val)
+                |> result.map_error(codec.FieldError("right", _)),
+              )
+              Ok(Branch(left, right))
             }
-            Ok("branch") -> {
-              case
-                find_value_field(pairs, "left"),
-                find_value_field(pairs, "right")
-              {
-                Ok(left_val), Ok(right_val) -> {
-                  let decoder = codec.lazy(tree_codec)
-                  case
-                    codec.decode(decoder, left_val),
-                    codec.decode(decoder, right_val)
-                  {
-                    Ok(left), Ok(right) -> Ok(Branch(left, right))
-                    Error(e), _ -> Error(codec.FieldError("left", e))
-                    _, Error(e) -> Error(codec.FieldError("right", e))
-                  }
-                }
-                Error(e), _ -> Error(e)
-                _, Error(e) -> Error(e)
-              }
-            }
-            Ok(other) -> Error(codec.CustomError("Unknown type: " <> other))
-            Error(e) -> Error(e)
+            other -> Error(codec.CustomError("Unknown type: " <> other))
           }
         }
         other -> Error(codec.TypeMismatch("Map", value.type_name(other)))
@@ -535,6 +523,7 @@ fn find_int_field(
     other -> Error(codec.TypeMismatch("Integer", value.type_name(other)))
   }
 }
+
 
 fn find_value_field(
   pairs: List(#(value.Value, value.Value)),

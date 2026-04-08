@@ -54,10 +54,7 @@ pub fn load_test_suite(
   dict.to_list(sections)
   |> list.try_map(fn(pair) {
     let #(name, tests) = pair
-    case parse_test_section(name, tests) {
-      Ok(test_cases) -> Ok(#(name, test_cases))
-      Error(e) -> Error(e)
-    }
+    result.map(parse_test_section(name, tests), fn(cases) { #(name, cases) })
   })
   |> result.map(dict.from_list)
 }
@@ -206,15 +203,8 @@ fn parse_binary_value(obj: Dict(String, Dynamic)) -> Result(TestValue, String) {
   case dict.get(obj, "binary") {
     Ok(v) ->
       case decode.run(v, decode.string) {
-        Ok(hex) ->
-          case hex {
-            "" -> Ok(BinaryValue(<<>>))
-            _ ->
-              case hex_to_bits(hex) {
-                Ok(bits) -> Ok(BinaryValue(bits))
-                Error(e) -> Error(e)
-              }
-          }
+        Ok("") -> Ok(BinaryValue(<<>>))
+        Ok(hex) -> result.map(hex_to_bits(hex), BinaryValue)
         Error(_) -> Error("binary field must be a string")
       }
     Error(_) -> Error("Missing binary field")
@@ -296,9 +286,8 @@ fn parse_dynamic_map(data: Dynamic) -> Result(TestValue, String) {
     Ok(obj) -> {
       dict.to_list(obj)
       |> list.try_map(fn(pair) {
-        let #(key, value) = pair
-        use v <- result.try(parse_dynamic_value(value))
-        Ok(#(StringValue(key), v))
+        let #(key, val) = pair
+        result.map(parse_dynamic_value(val), fn(v) { #(StringValue(key), v) })
       })
       |> result.map(MapValue)
     }
@@ -369,16 +358,11 @@ fn parse_ext_value(obj: Dict(String, Dynamic)) -> Result(TestValue, String) {
                 decode.run(type_dyn, decode.int),
                 decode.run(data_dyn, decode.string)
               {
-                Ok(type_code), Ok(hex_data) -> {
-                  case hex_data {
-                    "" -> Ok(ExtValue(type_code:, data: <<>>))
-                    _ ->
-                      case hex_to_bits(hex_data) {
-                        Ok(data) -> Ok(ExtValue(type_code:, data:))
-                        Error(e) -> Error(e)
-                      }
-                  }
-                }
+                Ok(type_code), Ok("") -> Ok(ExtValue(type_code:, data: <<>>))
+                Ok(type_code), Ok(hex_data) ->
+                  result.map(hex_to_bits(hex_data), fn(data) {
+                    ExtValue(type_code:, data:)
+                  })
                 _, _ -> Error("ext must be [type_code: int, data: hex_string]")
               }
             }
@@ -438,9 +422,10 @@ fn parse_non_nil_value(data: Dynamic) -> Result(TestValue, String) {
                         Ok(obj) -> {
                           dict.to_list(obj)
                           |> list.try_map(fn(pair) {
-                            let #(key, value) = pair
-                            use v <- result.try(parse_dynamic_value(value))
-                            Ok(#(StringValue(key), v))
+                            let #(key, val) = pair
+                            result.map(parse_dynamic_value(val), fn(v) {
+                              #(StringValue(key), v)
+                            })
                           })
                           |> result.map(MapValue)
                         }
