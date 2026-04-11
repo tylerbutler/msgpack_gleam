@@ -1,5 +1,0 @@
-kind: Security
-body: |
-  Prevent integer overflow and memory exhaustion DoS attacks
-
-  Added maximum size limits for strings (128MB), binaries (128MB), and collections (4M elements) to prevent DoS attacks via massive length prefixes.

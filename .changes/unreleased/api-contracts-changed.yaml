@@ -1,2 +1,0 @@
-kind: Changed
-body: Clarify canonical encoding contract (integers use smallest format; floats always use float64). Document stability guarantees for all error types.
