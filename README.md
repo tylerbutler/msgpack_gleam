@@ -126,6 +126,13 @@ case unpack_exact(data) {
 }
 ```
 
+## Code Generation (Experimental)
+
+The `codegen/` directory contains `msgpack_codegen`, an experimental code
+generator for creating codec definitions from Gleam types. It is a separate
+package and is **not** covered by msgpack_gleam's versioning or stability
+guarantees.
+
 ## Development
 
 ```sh
