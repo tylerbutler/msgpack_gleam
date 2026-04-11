@@ -4,6 +4,7 @@ description = "A MessagePack implementation for Gleam"
 licences = ["MIT"]
 
 target = "erlang"
+internal_modules = ["msgpack_gleam/encode", "msgpack_gleam/decode"]
 
 [dependencies]
 gleam_stdlib = ">= 0.44.0 and < 2.0.0"
