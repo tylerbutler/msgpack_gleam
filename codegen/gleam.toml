@@ -1,6 +1,6 @@
 name = "msgpack_codegen"
 version = "0.1.0"
-description = "Code generator for msgpack_gleam codecs"
+description = "Experimental code generator for msgpack_gleam codecs"
 licences = ["MIT"]
 
 target = "erlang"
