@@ -6,7 +6,8 @@ import msgpack_gleam/error.{type EncodeError}
 import msgpack_gleam/value.{type Value}
 
 /// Encode a MessagePack Value to binary data.
-/// Returns the canonical (smallest) encoding for each value.
+/// Returns the canonical encoding for each value. Integers use the smallest
+/// format; floats always use float64 for full precision.
 pub fn encode(value: Value) -> Result(BitArray, EncodeError) {
   encode_value(value)
   |> result.map(bytes_tree.to_bit_array)

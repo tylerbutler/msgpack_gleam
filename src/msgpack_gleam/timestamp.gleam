@@ -14,6 +14,9 @@ import msgpack_gleam/value.{type Value, Extension}
 pub const timestamp_type_code: Int = -1
 
 /// Errors that can occur during timestamp operations.
+///
+/// This type is transparent for exhaustive pattern matching.
+/// New variants are only added in major version bumps.
 pub type TimestampError {
   /// Nanoseconds value is outside the valid range [0, 999_999_999]
   InvalidNanoseconds(Int)

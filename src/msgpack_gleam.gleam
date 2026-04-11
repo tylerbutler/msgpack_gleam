@@ -56,8 +56,9 @@ import msgpack_gleam/value.{type Value}
 
 /// Encode a MessagePack Value to binary data.
 ///
-/// Returns the canonical (smallest) encoding for each value. This follows
-/// the MessagePack specification recommendation for deterministic encoding.
+/// Returns the canonical encoding for each value. Integers use the smallest
+/// format; floats always use float64 for full precision. This follows the
+/// MessagePack specification recommendation for deterministic encoding.
 ///
 /// ## Example
 ///
