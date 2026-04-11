@@ -1,2 +1,0 @@
-kind: Performance
-body: Optimize object decoding from O(N^2) to O(N) by using intermediate Dict lookup.

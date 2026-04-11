@@ -1,2 +1,0 @@
-kind: Changed
-body: Mark `encode` and `decode` modules as internal. Use `pack`, `unpack`, and `unpack_exact` from the main `msgpack_gleam` module instead.
