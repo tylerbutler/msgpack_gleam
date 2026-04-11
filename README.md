@@ -5,7 +5,7 @@ A pure Gleam implementation of [MessagePack](https://msgpack.org/), an efficient
 ## Features
 
 - **Complete MessagePack specification support** - All data types including nil, bool, int, float, string, binary, array, map, and extension types
-- **Canonical encoding** - Always produces the smallest valid encoding
+- **Canonical encoding** - Integers use the smallest valid format; floats use float64 for full precision
 - **Built-in timestamp support** - Convenience API for MessagePack timestamp extension type
 - **Streaming decode** - Decode values from a byte stream with remaining bytes returned
 - **Comprehensive test suite** - Validated against [msgpack-test-suite](https://github.com/kawanet/msgpack-test-suite)

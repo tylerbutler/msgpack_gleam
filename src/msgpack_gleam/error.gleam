@@ -1,6 +1,9 @@
 import gleam/int
 
 /// Errors that can occur during MessagePack encoding.
+///
+/// This type is transparent for exhaustive pattern matching.
+/// New variants are only added in major version bumps.
 pub type EncodeError {
   /// Integer is too large to be represented in MessagePack format
   IntegerTooLarge(Int)
@@ -19,6 +22,9 @@ pub type EncodeError {
 }
 
 /// Errors that can occur during MessagePack decoding.
+///
+/// This type is transparent for exhaustive pattern matching.
+/// New variants are only added in major version bumps.
 pub type DecodeError {
   /// Unexpected end of input
   UnexpectedEof

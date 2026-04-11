@@ -64,7 +64,10 @@ pub opaque type Codec(a) {
   )
 }
 
-/// Errors that can occur during decoding.
+/// Errors that can occur during codec-level decoding.
+///
+/// This type is transparent for exhaustive pattern matching.
+/// New variants are only added in major version bumps.
 pub type CodecDecodeError {
   /// Expected a different type
   TypeMismatch(expected: String, got: String)
